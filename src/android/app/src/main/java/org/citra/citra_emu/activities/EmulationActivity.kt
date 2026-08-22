@@ -27,7 +27,10 @@ import androidx.core.os.BundleCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.NavHostFragment
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.preference.PreferenceManager
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.NativeLibrary
@@ -372,6 +375,18 @@ class EmulationActivity : AppCompatActivity() {
             }
 
             KeyEvent.ACTION_UP -> {
+                // Virtual/injected events have downTime==eventTime (0 ms hold). Defer release so
+                // the emulation polling thread has time to see the PRESSED state.
+                // Needed to enable testing through adb automation
+                val pressDurationMs = event.eventTime - event.downTime
+                val minHoldMs = 50L
+                if (pressDurationMs < minHoldMs) {
+                    lifecycleScope.launch {
+                        delay(minHoldMs - pressDurationMs)
+                        hotkeyUtility.handleKeyRelease(event)
+                    }
+                    return true
+                }
                 return hotkeyUtility.handleKeyRelease(event)
             }
 
