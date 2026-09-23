@@ -6,22 +6,27 @@ package org.citra.citra_emu.display
 
 import android.app.Presentation
 import android.content.Context
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.os.Build
 import android.os.Bundle
 import android.view.Display
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowManager
 import org.citra.citra_emu.NativeLibrary
+import org.citra.citra_emu.activities.EmulationActivity
 import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.utils.Log
 
-class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
+class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener,
+    SecondaryDisplayCallback {
     private var pres: SecondaryDisplayPresentation? = null
+    private var usingActivityFallback = false
     private val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     private val vd: VirtualDisplay
     var preferredDisplayId = -1
@@ -55,8 +60,20 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
         NativeLibrary.secondarySurfaceDestroyed()
     }
 
+    // Invoked by SecondaryDisplayActivity when the secondary output is hosted by an Activity.
+    override fun onSurfaceChanged(surface: Surface) {
+        if (surface.isValid) {
+            NativeLibrary.secondarySurfaceChanged(surface)
+        } else {
+            Log.warning("SecondaryDisplay Attempted to update null or invalid surface")
+        }
+    }
+
+    override fun onSurfaceDestroyed() {
+        NativeLibrary.secondarySurfaceDestroyed()
+    }
+
     private fun getSecondaryDisplays(): List<Display> {
-        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val currentDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             context.display.displayId
         } else {
@@ -64,18 +81,69 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
             (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
                 .defaultDisplay.displayId
         }
-        val displays = dm.displays
-        val presDisplays = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
-        return displays.filter {
-            val isPresentable = presDisplays.any { pd -> pd.displayId == it.displayId }
-            val isNotDefaultOrPresentable =
-                (it != null && it.displayId != Display.DEFAULT_DISPLAY) || isPresentable
-
-            isNotDefaultOrPresentable &&
+        val result = displayManager.displays.filter {
+            // Do not require DISPLAY_CATEGORY_PRESENTATION: some panels (e.g. LG G8X) are not
+            // presentation-capable. updateDisplay() picks Presentation vs Activity per display.
+            val kept =
                 it.displayId != currentDisplayId &&
                 it.name != "HiddenDisplay" &&
                 it.state != Display.STATE_OFF &&
                 it.isValid
+            if (!kept) {
+                // Debug-level: this list can change on every display event, so per-display
+                // noise does not belong in the regular log.
+                Log.debug(
+                    "SecondaryDisplay getSecondaryDisplays: excluded ${it.displayId}:${it.name} " +
+                        "current=$currentDisplayId state=${it.state} valid=${it.isValid}"
+                )
+            }
+            kept
+        }
+        Log.debug("SecondaryDisplay getSecondaryDisplays: available=[${result.joinToString { "${it.displayId}:${it.name}" }}]")
+        return result
+    }
+
+    /**
+     * Detects that this window is confined to one half of a wider physical display (Surface Duo 2
+     * dual-screen mode, where the OS partitions the single logical display into per-task regions)
+     * and returns the bounds of the opposite half, or null when the window is not so partitioned.
+     */
+    private fun findSplitPanelBounds(): Rect? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        val activity = context as? android.app.Activity ?: return null
+        val display = activity.display
+        // The display *mode* reports the true physical size; getRealSize()/Display.width are
+        // hooked on the Surface Duo 2 to reflect the per-task partition (our own half), so they
+        // must not be used to detect the split.
+        val mode = display.mode ?: return null
+        // Physical bounds in the display's current (rotated) coordinate space.
+        val rotation = @Suppress("DEPRECATION") display.rotation
+        val (physicalWidth, physicalHeight) = when (rotation) {
+            1, 3 -> mode.physicalHeight to mode.physicalWidth
+            else -> mode.physicalWidth to mode.physicalHeight
+        }
+        // The bounds our window actually occupies (0,0-based on the display). The split runs
+        // along the axis the window is confined on: width for the portrait posture, height for
+        // the landscape posture. The two halves are symmetric around the hinge gutter.
+        val our = activity.windowManager.currentWindowMetrics.bounds
+        return when {
+            our.width() < physicalWidth * 3 / 4 -> {
+                val gutter = (physicalWidth - our.width() * 2).coerceAtLeast(0)
+                if (our.left <= 0) {
+                    Rect(our.width() + gutter, 0, physicalWidth, physicalHeight)
+                } else {
+                    Rect(0, 0, physicalWidth - our.width() - gutter, physicalHeight)
+                }
+            }
+            our.height() < physicalHeight * 3 / 4 -> {
+                val gutter = (physicalHeight - our.height() * 2).coerceAtLeast(0)
+                if (our.top <= 0) {
+                    Rect(0, our.height() + gutter, physicalWidth, physicalHeight)
+                } else {
+                    Rect(0, 0, physicalWidth, physicalHeight - our.height() - gutter)
+                }
+            }
+            else -> null
         }
     }
 
@@ -85,57 +153,134 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
             return
         }
 
-        val displayToUse = if (availableDisplays.isEmpty() ||
+        // Snapshot once: avoid re-querying DisplayManager multiple times below, which
+        // previously allowed a transient empty result (e.g. mid display-state change) to
+        // throw an uncaught IndexOutOfBoundsException on availableDisplays[0].
+        val displays = availableDisplays
+        Log.info(
+            "SecondaryDisplay updateDisplay: available=[${displays.joinToString { "${it.displayId}:${it.name}" }}] " +
+                "layout=${IntSetting.SECONDARY_DISPLAY_LAYOUT.int} enabled=${BooleanSetting.ENABLE_SECONDARY_DISPLAY.boolean} " +
+                "preferred=$preferredDisplayId"
+        )
+
+        // Some dual-panel devices (e.g. the Surface Duo 2 in dual-screen mode) never create a
+        // second logical display; the OS partitions the one wide display into per-task regions
+        // and confines our window to a single half. Host the secondary screen on the opposite
+        // half instead of falling back to the hidden virtual display.
+        if (displays.isEmpty() &&
+            IntSetting.SECONDARY_DISPLAY_LAYOUT.int != SecondaryDisplayLayout.NONE.int &&
+            BooleanSetting.ENABLE_SECONDARY_DISPLAY.boolean
+        ) {
+            val panel = findSplitPanelBounds()
+            if (panel != null) {
+                if (SecondaryDisplayActivity.isHosting(Display.DEFAULT_DISPLAY, panel)) {
+                    Log.info("SecondaryDisplay updateDisplay: already hosting split panel $panel")
+                } else {
+                    Log.info("SecondaryDisplay updateDisplay: hosting secondary on split panel $panel")
+                    currentDisplayId = Display.DEFAULT_DISPLAY
+                    NativeLibrary.setSecondaryHostExpected(true)
+                    SecondaryDisplayActivity.launch(context, Display.DEFAULT_DISPLAY, this, panel)
+                }
+                return
+            }
+        }
+
+        val displayToUse: Display? = if (displays.isEmpty() ||
             // Theoretically, the NONE option is no longer selectable, but
             // I am leaving this in for backwards compatibility
             IntSetting.SECONDARY_DISPLAY_LAYOUT.int == SecondaryDisplayLayout.NONE.int ||
             !BooleanSetting.ENABLE_SECONDARY_DISPLAY.boolean
         ) {
+            Log.info("SecondaryDisplay updateDisplay: falling back to HiddenDisplay (vd.display id=${vd.display?.displayId})")
             currentDisplayId = -1
             vd.display
         } else if (preferredDisplayId >= 0 &&
-            availableDisplays.any { it.displayId == preferredDisplayId }
+            displays.any { it.displayId == preferredDisplayId }
         ) {
             currentDisplayId = preferredDisplayId
-            availableDisplays.first { it.displayId == preferredDisplayId }
+            displays.first { it.displayId == preferredDisplayId }
         } else {
             val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
             val default = dm.displays.first { it.displayId == Display.DEFAULT_DISPLAY }
             // prioritize displays that have a different name from the default display, as
             // some devices such as the Odin 2 create a permanent virtual display with the same
             // name as the default display that should be skipped in most cases
-            currentDisplayId = availableDisplays.firstOrNull {
+            currentDisplayId = displays.firstOrNull {
                 it.name != default.name && !it.name.contains("Built", true)
             }?.displayId
-                ?: availableDisplays[0].displayId
-            availableDisplays.first { it.displayId == currentDisplayId }
+                ?: displays.firstOrNull()?.displayId
+                ?: -1
+            if (currentDisplayId == -1) null else displays.first { it.displayId == currentDisplayId }
         }
 
-        // if our presentation is already on the right display, ignore
-        if (pres?.display == displayToUse) return
-
-        // otherwise, make a new presentation
-        releasePresentation()
-
-        try {
-            pres = SecondaryDisplayPresentation(context, displayToUse!!, this)
-            pres?.show()
+        if (displayToUse == null) {
+            Log.info("SecondaryDisplay updateDisplay: no display selected, releasing secondary output")
+            releaseSecondaryOutput()
+            return
         }
-        // catch BadTokenException and InvalidDisplayException,
-        // the display became invalid asynchronously, so we can assign to null
-        // until onDisplayAdded/Removed/Changed is called and logic retriggered
-        catch (_: WindowManager.BadTokenException) {
-            pres = null
-        } catch (_: WindowManager.InvalidDisplayException) {
-            pres = null
+
+        val isPresentationCapable = displayManager
+            .getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+            .any { it.displayId == displayToUse.displayId }
+
+        // if our current output is already on the right display via the right
+        // mechanism, ignore
+        if (isPresentationCapable && pres?.display == displayToUse) {
+            Log.info("SecondaryDisplay updateDisplay: presentation already on display ${displayToUse.displayId}")
+            return
+        }
+        if (!isPresentationCapable && SecondaryDisplayActivity.isHosting(displayToUse.displayId)) {
+            Log.info("SecondaryDisplay updateDisplay: activity already hosting display ${displayToUse.displayId}")
+            return
+        }
+
+        Log.info(
+            "SecondaryDisplay updateDisplay: switching secondary output to display " +
+                "${displayToUse.displayId} (${displayToUse.name}) " +
+                "via ${if (isPresentationCapable) "Presentation" else "SecondaryDisplayActivity (fallback)"}"
+        )
+        // otherwise, create a new presentation (or activity fallback)
+        releaseSecondaryOutput()
+
+        // A real (visible) host will provide a surface, so let the emulator wait for it; the
+        // hidden virtual display is not a real host and must not delay game start.
+        val hostExpected = displayToUse.displayId != vd.display?.displayId
+        NativeLibrary.setSecondaryHostExpected(hostExpected)
+        Log.info("SecondaryDisplay updateDisplay: native host expected=$hostExpected")
+
+        if (isPresentationCapable) {
+            try {
+                pres = SecondaryDisplayPresentation(context, displayToUse, this)
+                pres?.show()
+                Log.info("SecondaryDisplay updateDisplay: presentation shown on display ${displayToUse.displayId}")
+            }
+            // catch BadTokenException and InvalidDisplayException,
+            // the display became invalid asynchronously, so we can assign to null
+            // until onDisplayAdded/Removed/Changed is called and logic retriggered
+            catch (_: WindowManager.BadTokenException) {
+                pres = null
+            } catch (_: WindowManager.InvalidDisplayException) {
+                pres = null
+            }
+        } else {
+            usingActivityFallback = true
+            SecondaryDisplayActivity.launch(context, displayToUse.displayId, this)
         }
     }
 
-    fun releasePresentation() {
+    fun releaseSecondaryOutput() {
         try {
             pres?.dismiss()
         } catch (_: Exception) { }
         pres = null
+
+        if (usingActivityFallback) {
+            usingActivityFallback = false
+            SecondaryDisplayActivity.finishActive()
+        }
+
+        // No secondary host going forward: never make the emulator wait for a surface.
+        NativeLibrary.setSecondaryHostExpected(false)
     }
 
     fun releaseVD() {
@@ -144,13 +289,28 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
     }
 
     override fun onDisplayAdded(displayId: Int) {
-        updateDisplay()
+        onDisplayEvent()
     }
 
     override fun onDisplayRemoved(displayId: Int) {
-        updateDisplay()
+        onDisplayEvent()
     }
+
     override fun onDisplayChanged(displayId: Int) {
+        onDisplayEvent()
+    }
+
+    // Display events fire while the app is backgrounded too (e.g. the cover screen's own launcher
+    // takes over during Recents); reconciling then would relaunch the host onto the cover only for
+    // the system to tear it down again, thrashing lifecycle state. Reconcile from display events
+    // only while the emulation activity is in the foreground -- its onResume re-hosts on the way
+    // back.
+    private fun onDisplayEvent() {
+        val activity = EmulationActivity.runningInstance() ?: return
+        // Skip display events while the activity is mid-configuration (a rotation re-hosts
+        // itself from onConfigurationChanged); acting on stale bounds would tear down a
+        // host that is already being relaunched.
+        if (activity.isChangingConfigurations || !EmulationActivity.isForeground()) return
         updateDisplay()
     }
 }
@@ -175,7 +335,7 @@ class SecondaryDisplayPresentation(
         surfaceView = SurfaceView(context)
         surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
-                Log.debug("SecondaryDisplay Surface created")
+                Log.debug("SecondaryDisplay Surface created on display ${display.displayId}")
             }
 
             override fun surfaceChanged(
@@ -184,7 +344,7 @@ class SecondaryDisplayPresentation(
                 width: Int,
                 height: Int
             ) {
-                Log.debug("SecondaryDisplay Surface changed: ${width}x$height")
+                Log.debug("SecondaryDisplay Surface changed: ${width}x$height on display ${display.displayId}")
                 parent.updateSurface()
             }
 
