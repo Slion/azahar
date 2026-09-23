@@ -6,6 +6,9 @@ package org.citra.citra_emu.display
 
 import android.app.Activity
 import android.content.Context
+import android.hardware.display.DisplayManager
+import android.os.Build
+import android.view.Display
 import android.view.WindowManager
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
@@ -21,11 +24,42 @@ class ScreenAdjustmentUtil(
     private val windowManager: WindowManager,
     private val settings: Settings
 ) {
+    companion object {
+        /**
+         * On devices where the OS confines the app's primary window to one half of a wider
+         * display (e.g. Surface Duo 2 in landscape), which half it lands on depends on the
+         * device's orientation. Correct for that so the top 3DS screen always shows on the
+         * upper panel with "Swap Screens" off, and on the lower one when on.
+         */
+        fun effectiveSwapScreens(userSwap: Boolean, activity: Activity): Boolean {
+            if (Build.VERSION.SDK_INT < 30) return userSwap
+            val display = activity.windowManager.defaultDisplay
+            val rotation = @Suppress("DEPRECATION") display.rotation
+            if (rotation != 1 && rotation != 3) return userSwap
+            // Only partitioned-display devices (one wide display, no real second logical
+            // display, e.g. Surface Duo 2) re-home the task between halves on a flip.
+            val displays = activity.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            if (displays.displays.any {
+                    it.displayId != Display.DEFAULT_DISPLAY &&
+                    it.name != "HiddenDisplay" &&
+                    it.state != Display.STATE_OFF
+                }
+            ) return userSwap
+            val mode = display.mode ?: return userSwap
+            // Rotation 1/3: the display's natural width is the capture-space height.
+            val physicalHeight = mode.physicalWidth
+            val bounds = activity.windowManager.currentWindowMetrics.bounds
+            val onBottomHalf = bounds.height() < physicalHeight * 3 / 4 && bounds.top > 0
+            return userSwap != onBottomHalf
+        }
+    }
+
     fun swapScreen() {
         val isEnabled = !EmulationMenuSettings.swapScreens
         EmulationMenuSettings.swapScreens = isEnabled
+        val activity = context as? Activity
         NativeLibrary.swapScreens(
-            isEnabled,
+            if (activity != null) effectiveSwapScreens(isEnabled, activity) else isEnabled,
             windowManager.defaultDisplay.rotation
         )
         BooleanSetting.SWAP_SCREEN.boolean = isEnabled
