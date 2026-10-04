@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Citra.Splash.Main" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/citra_surface_blue</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_spa</item>
+        <item name="postSplashScreenTheme">@style/Theme.Citra.Blue</item>
+    </style>
+
+</resources>
