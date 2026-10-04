@@ -30,11 +30,17 @@ struct CSTHeader {
     u32_le zero{};                   /// Should be zero, just in case.
     std::array<u8, 20> build_version{}; /// Latest build version, used as compatibility.
     u32_le zero_2{};                    /// Should be zero, just in case.
+    u32_le format_version{};            /// Format version of the serialized state. Bumped only on layout changes.
 
-    std::array<u8, 168> reserved{}; /// Make heading 256 bytes so it has consistent size
+    std::array<u8, 164> reserved{}; /// Make heading 256 bytes so it has consistent size
 };
 static_assert(sizeof(CSTHeader) == 256, "CSTHeader should be 256 bytes");
 #pragma pack(pop)
+
+// Bumped only when the serialized save state layout changes. A zero format version marks
+// legacy savestates that predate the field but share the current layout, so it is treated
+// as compatible. Any other version that does not match cannot be loaded.
+constexpr u32 kSaveStateFormatVersion = 1;
 
 constexpr std::array<u8, 4> header_magic_bytes{{'C', 'S', 'T', 0x1B}};
 
@@ -62,21 +68,15 @@ static bool ValidateSaveState(const CSTHeader& header, SaveStateInfo& info, u64 
         LOG_WARNING(Core, "Save state file isn't for the current game {}", path);
         return false;
     }
-    const std::string revision = fmt::format("{:02x}", fmt::join(header.revision, ""));
-    const std::string build_name =
-        header.zero == 0 ? reinterpret_cast<const char*>(header.build_name.data()) : "";
-    const std::string build_version =
-        header.zero_2 == 0 ? reinterpret_cast<const char*>(header.build_version.data()) : "";
-
-    if (revision == Common::g_scm_rev) {
-        info.status = SaveStateInfo::ValidationStatus::OK;
+    if (header.format_version != 0 && header.format_version != kSaveStateFormatVersion) {
+        // A different, non-legacy format version cannot be loaded by this build.
+        info.build_name =
+            header.zero == 0 ? reinterpret_cast<const char*>(header.build_name.data()) : "";
+        info.status = SaveStateInfo::ValidationStatus::BuildMismatch;
     } else {
-        info.build_name = build_name;
-        info.build_version = build_version;
-
-        info.status = Common::g_build_version == info.build_version
-                          ? SaveStateInfo::ValidationStatus::RevisionMismatch
-                          : SaveStateInfo::ValidationStatus::BuildMismatch;
+        // Version 1 and legacy savestates (version 0) share the same layout, so both load
+        // regardless of the build they were created on.
+        info.status = SaveStateInfo::ValidationStatus::OK;
     }
     return true;
 }
@@ -175,6 +175,7 @@ void System::SaveState(u32 slot) const {
     CSTHeader header{};
     header.filetype = header_magic_bytes;
     header.program_id = title_id;
+    header.format_version = kSaveStateFormatVersion;
     std::string rev_bytes;
     CryptoPP::StringSource ss(Common::g_scm_rev, true,
                               new CryptoPP::HexDecoder(new CryptoPP::StringSink(rev_bytes)));
@@ -255,6 +256,7 @@ std::vector<u8> System::SaveStateBuffer() const {
     CSTHeader header{};
     header.filetype = header_magic_bytes;
     header.program_id = title_id;
+    header.format_version = kSaveStateFormatVersion;
     std::string rev_bytes;
     CryptoPP::StringSource ss(Common::g_scm_rev, true,
                               new CryptoPP::HexDecoder(new CryptoPP::StringSink(rev_bytes)));
@@ -297,11 +299,13 @@ bool System::LoadStateBuffer(std::vector<u8> buffer) {
         LOG_ERROR(Core, "Save state isn't for the current game");
         return false;
     }
-    std::string revision = fmt::format("{:02x}", fmt::join(header.revision, ""));
-    if (revision != Common::g_scm_rev) {
+    // Version 1 and legacy savestates (version 0) share the same layout, so both load
+    // regardless of the build they were created on.
+    if (header.format_version != 0 && header.format_version != kSaveStateFormatVersion) {
         LOG_ERROR(Core,
-                  "Save state file created from a different revision (core: {}, savestate: {})",
-                  Common::g_scm_rev, revision);
+                  "Save state was created with a different format version (core: {}, "
+                  "savestate: {})",
+                  kSaveStateFormatVersion, header.format_version);
         return false;
     }
 
