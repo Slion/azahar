@@ -23,6 +23,13 @@
         android:title="@string/menu_emulation_amiibo" />
 
     <item
+        android:id="@+id/menu_dual_screen"
+        android:checkable="true"
+        android:icon="@drawable/ic_splitscreen"
+        android:title="@string/emulation_dual_screen"
+        android:visible="false" />
+
+    <item
         android:id="@+id/menu_landscape_screen_layout"
         android:icon="@drawable/ic_fit_screen"
         android:title="@string/emulation_switch_screen_layout" />
@@ -39,11 +46,13 @@
 
     <item
         android:id="@+id/menu_swap_screens"
+        android:checkable="true"
         android:icon="@drawable/ic_splitscreen"
         android:title="@string/emulation_swap_screens" />
 
     <item
         android:id="@+id/menu_rotate_upright"
+        android:checkable="true"
         android:icon="@drawable/ic_rotate_up_right"
         android:title="@string/emulation_rotate_upright" />
 
