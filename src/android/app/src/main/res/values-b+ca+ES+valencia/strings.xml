@@ -551,7 +551,7 @@ S\'esperen errors gràfics temporals quan estigue activat.</string>
     <string name="emulation_custom_layout_height">Alt</string>
     <string name="emulation_cycle_landscape_layouts">Alternar estils</string>
     <string name="emulation_swap_screens">Intercanviar Pantalles</string>
-    <string name="emulation_rotate_upright">Girar pantalla en vertical</string>
+    <string name="emulation_rotate_screen">Girar pantalla en vertical</string>
     <string name="emulation_touch_overlay_reset">Reiniciar Estil</string>
     <string name="emulation_show_controller_overlay">Mostrar superposició de controls</string>
     <string name="emulation_close_game">Tancar Joc</string>

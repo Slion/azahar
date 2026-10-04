@@ -510,7 +510,7 @@
     <string name="emulation_custom_layout_height">Wysokość</string>
     <string name="emulation_cycle_landscape_layouts">Układy Cykli</string>
     <string name="emulation_swap_screens">Zamień Ekrany</string>
-    <string name="emulation_rotate_upright">Obróć ekran w pozycji pionowej</string>
+    <string name="emulation_rotate_screen">Obróć ekran w pozycji pionowej</string>
     <string name="emulation_touch_overlay_reset">Zresetuj Nakładkę</string>
     <string name="emulation_show_controller_overlay">Wyświetl nakładkę kontrolera</string>
     <string name="emulation_close_game">Zamknij Grę</string>

@@ -432,7 +432,7 @@
     <string name="emulation_custom_layout_height">Höhe</string>
     <string name="emulation_cycle_landscape_layouts">Anordnung wechseln</string>
     <string name="emulation_swap_screens">Bildschirme tauschen</string>
-    <string name="emulation_rotate_upright">Bildschirm aufrecht rotieren</string>
+    <string name="emulation_rotate_screen">Bildschirm aufrecht rotieren</string>
     <string name="emulation_touch_overlay_reset">Overlay zurücksetzen</string>
     <string name="emulation_show_controller_overlay">Controller Overlay anzeigen</string>
     <string name="emulation_close_game">Spiel schließen</string>

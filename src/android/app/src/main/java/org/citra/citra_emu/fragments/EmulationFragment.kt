@@ -260,6 +260,7 @@ class EmulationFragment :
                 binding.surfaceInputOverlay.isClickable = false
                 binding.surfaceInputOverlay.isFocusable = false
                 binding.surfaceInputOverlay.isFocusableInTouchMode = false
+                refreshDualScreenMenu()
             }
 
             override fun onDrawerClosed(drawerView: View) {
@@ -294,6 +295,8 @@ class EmulationFragment :
                 requireContext().theme
             )
         }
+
+        refreshDualScreenMenu()
 
         binding.inGameMenu.getHeaderView(0).apply {
             val titleView = findViewById<TextView>(R.id.text_game_title)
@@ -357,13 +360,23 @@ class EmulationFragment :
                     true
                 }
 
+                R.id.menu_dual_screen -> {
+                    val enabled = !BooleanSetting.ENABLE_SECONDARY_DISPLAY.boolean
+                    screenAdjustmentUtil.toggleDualScreen(enabled)
+                    emulationActivity.secondaryDisplayManager.updateDisplay()
+                    refreshDualScreenMenu()
+                    true
+                }
+
                 R.id.menu_swap_screens -> {
                     screenAdjustmentUtil.swapScreen()
+                    updateSwapScreensMenuItem()
                     true
                 }
 
                 R.id.menu_rotate_upright -> {
                     screenAdjustmentUtil.toggleScreenUpright()
+                    updateRotateUprightMenuItem()
                     true
                 }
 
@@ -726,6 +739,67 @@ class EmulationFragment :
                     .apply()
             }
             .show()
+    }
+
+    private fun isDualScreenActive(): Boolean =
+        emulationActivity.secondaryDisplayManager.isDualScreenActive
+
+    // Reconciles every dual-screen-dependent menu item at once; call this after anything that
+    // can change dual-screen state instead of updating the items one by one.
+    private fun refreshDualScreenMenu() {
+        updateDualScreenMenuVisibility()
+        updateSwapScreensMenuItem()
+        updateRotateUprightMenuItem()
+        updateDualScreenMenuItem()
+    }
+
+    private fun updateSwapScreensMenuItem() {
+        binding.inGameMenu.menu.findItem(R.id.menu_swap_screens).apply {
+            val swapEnabled = EmulationMenuSettings.swapScreens
+            isChecked = swapEnabled
+            icon = ResourcesCompat.getDrawable(
+                resources,
+                if (swapEnabled) R.drawable.ic_check else R.drawable.ic_splitscreen,
+                requireContext().theme
+            )
+        }
+    }
+
+    private fun updateRotateUprightMenuItem() {
+        binding.inGameMenu.menu.findItem(R.id.menu_rotate_upright).apply {
+            val upright = BooleanSetting.UPRIGHT_SCREEN.boolean
+            isChecked = upright
+            icon = ResourcesCompat.getDrawable(
+                resources,
+                if (upright) R.drawable.ic_check else R.drawable.ic_rotate_up_right,
+                requireContext().theme
+            )
+        }
+    }
+
+    private fun updateDualScreenMenuVisibility() {
+        // With a second panel each 3DS screen gets exactly one display; the multi-screen
+        // layout choices no longer apply, so only Swap and Rotate remain.
+        val dualScreen = isDualScreenActive()
+        binding.inGameMenu.menu.apply {
+            findItem(R.id.menu_landscape_screen_layout).isVisible = !dualScreen
+            findItem(R.id.menu_portrait_screen_layout).isVisible = !dualScreen
+            findItem(R.id.menu_secondary_screen_layout).isVisible = !dualScreen
+        }
+    }
+
+    private fun updateDualScreenMenuItem() {
+        binding.inGameMenu.menu.findItem(R.id.menu_dual_screen).apply {
+            // Only offer the toggle on devices that can host a second 3DS screen.
+            isVisible = emulationActivity.secondaryDisplayManager.isDualScreenSupported()
+            val enabled = BooleanSetting.ENABLE_SECONDARY_DISPLAY.boolean
+            isChecked = enabled
+            icon = ResourcesCompat.getDrawable(
+                resources,
+                if (enabled) R.drawable.ic_check else R.drawable.ic_splitscreen,
+                requireContext().theme
+            )
+        }
     }
 
     private fun showOverlayMenu() {

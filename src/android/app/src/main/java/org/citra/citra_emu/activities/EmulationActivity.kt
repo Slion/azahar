@@ -6,12 +6,16 @@ package org.citra.citra_emu.activities
 
 import android.Manifest.permission
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.graphics.Rect
+import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Bundle
+import android.view.Display
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -26,7 +30,10 @@ import androidx.core.os.BundleCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.NavHostFragment
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.preference.PreferenceManager
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.NativeLibrary
@@ -36,7 +43,9 @@ import org.citra.citra_emu.contracts.OpenFileResultContract
 import org.citra.citra_emu.databinding.ActivityEmulationBinding
 import org.citra.citra_emu.dialogs.NetPlayDialog
 import org.citra.citra_emu.display.ScreenAdjustmentUtil
+import org.citra.citra_emu.display.ScreenLayout
 import org.citra.citra_emu.display.SecondaryDisplay
+import org.citra.citra_emu.display.SecondaryDisplayActivity
 import org.citra.citra_emu.features.hotkeys.HotkeyUtility
 import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
@@ -90,6 +99,7 @@ class EmulationActivity : AppCompatActivity() {
     private var isRotationBlocked: Boolean = true
     private var isEmulationRunning: Boolean = false
     private var isEmulationReady: Boolean = false
+    private var isForeground: Boolean = false
 
     private fun ensureUserDirectoryReady(): Boolean {
         if (DirectoryInitialization.areCitraDirectoriesReady()) return true
@@ -150,10 +160,7 @@ class EmulationActivity : AppCompatActivity() {
         enableFullscreenImmersive()
 
         // Override Citra core INI with the one set by our in game menu
-        NativeLibrary.swapScreens(
-            EmulationMenuSettings.swapScreens,
-            windowManager.defaultDisplay.rotation
-        )
+        applyScreenSwap()
 
         EmulationLifecycleUtil.addShutdownHook(onShutdown)
 
@@ -178,7 +185,9 @@ class EmulationActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-
+        if (intent.getBooleanExtra("bring_to_front_only", false)) {
+            return
+        }
         NativeLibrary.stopEmulation()
         NativeLibrary.playTimeManagerStop()
 
@@ -214,11 +223,99 @@ class EmulationActivity : AppCompatActivity() {
                 applyOrientationSettings()
             }
         }
+        isForeground = true
+        // Bring the cover host forward, and re-host it if a background round-trip dropped it.
+        SecondaryDisplayActivity.bringToFront(this)
+        secondaryDisplayManager.updateDisplay()
+        applyScreenSwap()
+        @Suppress("DEPRECATION")
+        displayManager.registerDisplayListener(displayListener, null)
         super.onResume()
     }
 
+    override fun onPause() {
+        isForeground = false
+        @Suppress("DEPRECATION")
+        displayManager.unregisterDisplayListener(displayListener)
+        SecondaryDisplayActivity.sendToBack()
+        super.onPause()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (isForeground) {
+            secondaryDisplayManager.updateDisplay()
+            applyScreenSwap()
+        }
+    }
+
+    private val displayManager: DisplayManager by lazy {
+        getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+    }
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+
+        override fun onDisplayRemoved(displayId: Int) = Unit
+
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId != Display.DEFAULT_DISPLAY) return
+            @Suppress("DEPRECATION")
+            val rotation = windowManager.defaultDisplay.rotation
+            if (rotation == lastSwapRotation) return
+            // A 180-degree landscape flip (R270<->R90) changes no activity configuration,
+            // so onConfigurationChanged does not fire. Re-apply the swap correction now:
+            // on a fixed two-panel clamshell (LG G8X) the panels do not move, so this alone
+            // is enough; on a partitioned display (Surface Duo 2) the OS re-homes this
+            // window to the other half in a later transaction, so also wait for the
+            // window's bounds to catch up before re-applying.
+            applyScreenSwap()
+            val last = lastSwapBounds ?: return
+            binding.root.postDelayed({ checkWindowHalfChanged(last, 0) }, 200)
+        }
+    }
+
+    private fun checkWindowHalfChanged(last: Rect, attempt: Int) {
+        if (!isForeground) return
+        val bounds = windowManager.currentWindowMetrics.bounds
+        if (bounds != last) {
+            applyScreenSwap()
+        } else if (attempt < 15) {
+            binding.root.postDelayed({ checkWindowHalfChanged(last, attempt + 1) }, 200)
+        }
+    }
+
+    // The window bounds and display rotation the last applied swap was computed against.
+    private var lastSwapBounds: Rect? = null
+    private var lastSwapRotation = -1
+
+    // Applies the in-game "Swap Screens" choice, corrected for which half of the display this
+    // window is confined to (dual-screen devices may re-home the task on a 180-degree flip).
+    private fun applyScreenSwap() {
+        lastSwapBounds = windowManager.currentWindowMetrics.bounds
+        @Suppress("DEPRECATION")
+        lastSwapRotation = windowManager.defaultDisplay.rotation
+        // In dual-screen mode each panel hosts exactly one 3DS screen: the primary window
+        // must render a single screen (which one is decided by the swap below), so pin the
+        // primary layout to SingleScreen and let the secondary window take the other.
+        if (secondaryDisplayManager.isDualScreenActive &&
+            IntSetting.SCREEN_LAYOUT.int != ScreenLayout.SINGLE_SCREEN.int
+        ) {
+            screenAdjustmentUtil.changeScreenOrientation(ScreenLayout.SINGLE_SCREEN.int, update = false)
+        }
+        val effective = ScreenAdjustmentUtil.effectiveSwapScreens(
+            EmulationMenuSettings.swapScreens, this
+        )
+        Log.info(
+            "applyScreenSwap: userSwap=${EmulationMenuSettings.swapScreens} " +
+                "rotation=${lastSwapRotation} dualScreen=${secondaryDisplayManager.isDualScreenActive} " +
+                "effective=$effective"
+        )
+        NativeLibrary.swapScreens(effective, windowManager.defaultDisplay.rotation)
+    }
+
     override fun onStop() {
-        secondaryDisplayManager.releasePresentation()
+        secondaryDisplayManager.releaseSecondaryOutput()
         super.onStop()
     }
 
@@ -252,7 +349,7 @@ class EmulationActivity : AppCompatActivity() {
         NativeLibrary.playTimeManagerStop()
         isEmulationRunning = false
         instance = null
-        secondaryDisplayManager.releasePresentation()
+        secondaryDisplayManager.releaseSecondaryOutput()
         secondaryDisplayManager.releaseVD()
 
         super.onDestroy()
@@ -375,6 +472,18 @@ class EmulationActivity : AppCompatActivity() {
             }
 
             KeyEvent.ACTION_UP -> {
+                // Virtual/injected events have downTime==eventTime (0 ms hold). Defer release so
+                // the emulation polling thread has time to see the PRESSED state.
+                // Needed to enable testing through adb automation
+                val pressDurationMs = event.eventTime - event.downTime
+                val minHoldMs = 50L
+                if (pressDurationMs < minHoldMs) {
+                    lifecycleScope.launch {
+                        delay(minHoldMs - pressDurationMs)
+                        hotkeyUtility.handleKeyRelease(event)
+                    }
+                    return true
+                }
                 return hotkeyUtility.handleKeyRelease(event)
             }
 
@@ -644,5 +753,9 @@ class EmulationActivity : AppCompatActivity() {
         private var instance: EmulationActivity? = null
 
         fun isRunning(): Boolean = instance?.isEmulationRunning ?: false
+
+        fun runningInstance(): EmulationActivity? = instance
+
+        fun isForeground(): Boolean = instance?.isForeground == true
     }
 }

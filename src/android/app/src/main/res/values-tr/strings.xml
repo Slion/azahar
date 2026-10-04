@@ -417,7 +417,7 @@
     <string name="emulation_custom_layout_width">Genişlik</string>
     <string name="emulation_custom_layout_height">Yükseklik</string>
     <string name="emulation_swap_screens">Ekranları Değiştir</string>
-    <string name="emulation_rotate_upright">Ekranı dikey konuma çevir</string>
+    <string name="emulation_rotate_screen">Ekranı dikey konuma çevir</string>
     <string name="emulation_touch_overlay_reset">Yerleşimi Sıfırla</string>
     <string name="emulation_show_controller_overlay">Kontrolcü Yerleşimini Göster</string>
     <string name="emulation_close_game">Oyunu Kapat</string>

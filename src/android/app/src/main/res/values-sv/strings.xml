@@ -550,7 +550,7 @@
     <string name="emulation_custom_layout_height">Höjd</string>
     <string name="emulation_cycle_landscape_layouts">Växla layouter</string>
     <string name="emulation_swap_screens">Skärmbyte</string>
-    <string name="emulation_rotate_upright">Vrid skärmen upprätt</string>
+    <string name="emulation_rotate_screen">Vrid skärmen upprätt</string>
     <string name="emulation_touch_overlay_reset">Återställ överlägg</string>
     <string name="emulation_show_controller_overlay">Visa kontrolleröverlägg</string>
     <string name="emulation_close_game">Stäng spelet</string>

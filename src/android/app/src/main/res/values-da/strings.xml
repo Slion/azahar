@@ -512,7 +512,7 @@
     <string name="emulation_custom_layout_height">Højde</string>
     <string name="emulation_cycle_landscape_layouts">Skift layout</string>
     <string name="emulation_swap_screens">Byt skærme</string>
-    <string name="emulation_rotate_upright">Roter skærmen oprejst</string>
+    <string name="emulation_rotate_screen">Roter skærmen oprejst</string>
     <string name="emulation_touch_overlay_reset">Nulstil overlejring</string>
     <string name="emulation_show_controller_overlay">Vis controller-overlejring</string>
     <string name="emulation_close_game">Luk spil</string>

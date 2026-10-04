@@ -550,7 +550,7 @@
     <string name="emulation_custom_layout_height">Hauteur</string>
     <string name="emulation_cycle_landscape_layouts">Dispositions à alterner</string>
     <string name="emulation_swap_screens">Permuter les écrans</string>
-    <string name="emulation_rotate_upright">Tourner l\'écran à la verticale</string>
+    <string name="emulation_rotate_screen">Tourner l\'écran à la verticale</string>
     <string name="emulation_touch_overlay_reset">Réinitialiser l\'overlay</string>
     <string name="emulation_show_controller_overlay">Afficher l\'overlay du contrôleur</string>
     <string name="emulation_close_game">Fermer le jeu</string>

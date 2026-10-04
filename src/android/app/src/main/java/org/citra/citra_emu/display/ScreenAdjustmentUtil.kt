@@ -6,9 +6,12 @@ package org.citra.citra_emu.display
 
 import android.app.Activity
 import android.content.Context
+import android.hardware.display.DisplayManager
+import android.os.Build
 import android.view.WindowManager
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
+import org.citra.citra_emu.activities.EmulationActivity
 import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.IntListSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
@@ -21,11 +24,41 @@ class ScreenAdjustmentUtil(
     private val windowManager: WindowManager,
     private val settings: Settings
 ) {
+    companion object {
+        /**
+         * On devices where the OS confines the app's primary window to one half of a wider
+         * display (e.g. Surface Duo 2 in landscape), which half it lands on depends on the
+         * device's orientation. Correct for that so the top 3DS screen always shows on the
+         * upper panel with "Swap Screens" off, and on the lower one when on.
+         */
+        fun effectiveSwapScreens(userSwap: Boolean, activity: Activity): Boolean {
+            if (Build.VERSION.SDK_INT < 30) return userSwap
+            val displayManager = activity.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            val display = activity.windowManager.defaultDisplay
+            val rotation = @Suppress("DEPRECATION") display.rotation
+            val presentation = presentationIds(displayManager)
+            val primary = display.panelOf(displayManager, presentation)
+            val candidates = displayManager.displays
+                .map { it.panelOf(displayManager, presentation) }
+                .filter { it.isUsableSecondary(primary.displayId) }
+            val bounds = activity.windowManager.currentWindowMetrics.bounds
+            return effectiveSwap(
+                userSwap,
+                classifyTopology(
+                    primary, candidates,
+                    bounds.left, bounds.top, bounds.width(), bounds.height(), rotation
+                ),
+                rotation
+            )
+        }
+    }
+
     fun swapScreen() {
         val isEnabled = !EmulationMenuSettings.swapScreens
         EmulationMenuSettings.swapScreens = isEnabled
+        val activity = context as? Activity
         NativeLibrary.swapScreens(
-            isEnabled,
+            if (activity != null) effectiveSwapScreens(isEnabled, activity) else isEnabled,
             windowManager.defaultDisplay.rotation
         )
         BooleanSetting.SWAP_SCREEN.boolean = isEnabled
@@ -33,6 +66,11 @@ class ScreenAdjustmentUtil(
     }
 
     fun cycleLayouts() {
+        // In dual-screen mode the layout is fixed (one 3DS screen per panel); cycling the
+        // multi-screen layouts from a bound hotkey would break that.
+        if ((context as? EmulationActivity)?.secondaryDisplayManager?.isDualScreenActive == true) {
+            return
+        }
         val landscapeLayoutsToCycle = IntListSetting.LAYOUTS_TO_CYCLE.list
         val landscapeValues =
             if (landscapeLayoutsToCycle.isNotEmpty()) {
@@ -64,11 +102,13 @@ class ScreenAdjustmentUtil(
         NativeLibrary.updateFramebuffer(NativeLibrary.isPortraitMode())
     }
 
-    fun changeScreenOrientation(layoutOption: Int) {
+    fun changeScreenOrientation(layoutOption: Int, update: Boolean = true) {
         IntSetting.SCREEN_LAYOUT.int = layoutOption
         settings.saveSetting(IntSetting.SCREEN_LAYOUT, SettingsFile.FILE_NAME_CONFIG)
         NativeLibrary.reloadSettings()
-        NativeLibrary.updateFramebuffer(NativeLibrary.isPortraitMode())
+        if (update) {
+            NativeLibrary.updateFramebuffer(NativeLibrary.isPortraitMode())
+        }
     }
 
     fun changeSecondaryOrientation(layoutOption: Int) {
@@ -87,6 +127,14 @@ class ScreenAdjustmentUtil(
     fun disableSecondaryDisplay() {
         BooleanSetting.ENABLE_SECONDARY_DISPLAY.boolean = false
         settings.saveSetting(BooleanSetting.ENABLE_SECONDARY_DISPLAY, SettingsFile.FILE_NAME_CONFIG)
+    }
+
+    fun toggleDualScreen(enabled: Boolean) {
+        if (enabled) {
+            enableSecondaryDisplay(SecondaryDisplayLayout.REVERSE_PRIMARY.int)
+        } else {
+            disableSecondaryDisplay()
+        }
     }
 
     fun changeActivityOrientation(orientationOption: Int) {
