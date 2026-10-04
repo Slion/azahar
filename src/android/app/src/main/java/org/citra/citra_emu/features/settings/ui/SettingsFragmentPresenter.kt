@@ -1259,7 +1259,7 @@ class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) 
             add(
                 SwitchSetting(
                     BooleanSetting.UPRIGHT_SCREEN,
-                    R.string.emulation_rotate_upright,
+                    R.string.emulation_rotate_screen,
                     0,
                     BooleanSetting.UPRIGHT_SCREEN.key,
                     BooleanSetting.UPRIGHT_SCREEN.defaultValue
