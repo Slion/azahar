@@ -6,6 +6,7 @@ on:
 
 jobs:
   stale-issues:
+    if: ${{ github.repository == 'azahar-emu/azahar' }}
     runs-on: ubuntu-latest
     permissions:
       issues: write

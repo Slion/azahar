@@ -177,6 +177,11 @@ android {
             dimension = "version"
             versionNameSuffix = "-vanilla"
         }
+        register("azalea") {
+            dimension = "version"
+            versionNameSuffix = "-azalea"
+            applicationId = "net.slions.azalea"
+        }
         register("googlePlay") {
             dimension = "version"
             versionNameSuffix = "-googleplay"

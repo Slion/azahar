@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    if: github.event.issue.pull_request && contains(github.event.issue.labels.*.name, 'needs verification')
+    if: ${{ github.repository == 'azahar-emu/azahar' && github.event.issue.pull_request && contains(github.event.issue.labels.*.name, 'needs verification') }}
     steps:
       - name: Verify and reopen PR
         uses: actions/github-script@v9

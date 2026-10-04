@@ -18,6 +18,7 @@ permissions:
 
 jobs:
   libretro-android:
+    if: ${{ github.repository == 'azahar-emu/azahar' }}
     runs-on: ubuntu-22.04
     env:
       OS: android
@@ -77,6 +78,7 @@ jobs:
           sbom-path: libretro-android.spdx.json
 
   libretro-linux:
+    if: ${{ github.repository == 'azahar-emu/azahar' }}
     runs-on: ubuntu-22.04
     env:
       OS: linux
@@ -123,6 +125,7 @@ jobs:
           sbom-path: libretro-linux.spdx.json
 
   libretro-windows:
+    if: ${{ github.repository == 'azahar-emu/azahar' }}
     runs-on: ubuntu-latest
     env:
       OS: windows
@@ -172,6 +175,7 @@ jobs:
             ./*.zip
           sbom-path: libretro-windows.spdx.json
   libretro-macos:
+    if: ${{ github.repository == 'azahar-emu/azahar' }}
     runs-on: macos-26
     strategy:
       fail-fast: false
@@ -220,6 +224,7 @@ jobs:
           sbom-path: libretro-macos-${{ matrix.target }}.spdx.json
 
   libretro-ios:
+    if: ${{ github.repository == 'azahar-emu/azahar' }}
     runs-on: macos-26
     env:
       OS: ios
@@ -262,6 +267,7 @@ jobs:
           sbom-path: libretro-ios.spdx.json
 
   libretro-tvos:
+    if: ${{ github.repository == 'azahar-emu/azahar' }}
     runs-on: macos-26
     env:
       OS: tvos
