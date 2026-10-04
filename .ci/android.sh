@@ -13,6 +13,9 @@ chmod +x ./gradlew
 if [[ "$TARGET" == "googleplay" ]]; then
     ./gradlew assembleGooglePlayRelease
     ./gradlew bundleGooglePlayRelease
+elif [[ "$TARGET" == "azalea" ]]; then
+    ./gradlew assembleAzaleaRelease
+    ./gradlew bundleAzaleaRelease
 else
     ./gradlew assembleVanillaRelease
     ./gradlew bundleVanillaRelease
