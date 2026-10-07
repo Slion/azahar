@@ -2,15 +2,14 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-import android.databinding.tool.ext.capitalizeUS
 import de.undercouch.gradle.tasks.download.Download
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("de.undercouch.download") version "5.5.0"
     id("kotlin-parcelize")
-    kotlin("plugin.serialization") version "2.0.20"
+    kotlin("plugin.serialization")
     id("androidx.navigation.safeargs.kotlin")
     id("org.jlleitschuh.gradle.ktlint")
 }
@@ -28,16 +27,12 @@ val downloadedJniLibsPath = "${layout.buildDirectory.get().asFile.path}/download
 android {
     namespace = "org.citra.citra_emu"
 
-    compileSdkVersion = "android-35"
+    compileSdk = 37
     ndkVersion = "27.3.13750724"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
     }
 
     androidResources {
@@ -52,6 +47,7 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        compose = true
     }
 
     lint {
@@ -199,21 +195,33 @@ android {
     sourceSets {
         named("main") {
             // Set up path for downloaded native libraries
-            jniLibs.srcDir(downloadedJniLibsPath)
+            jniLibs.directories.add(downloadedJniLibsPath)
         }
     }
 }
 
 dependencies {
-    implementation("androidx.activity:activity-ktx:1.9.2")
+    implementation(platform("androidx.compose:compose-bom:2025.12.01"))
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     testImplementation("junit:junit:4.13.2")
     implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3.adaptive:adaptive:1.3.0")
+    implementation("androidx.compose.material3.adaptive:adaptive-layout:1.3.0")
+    implementation("androidx.compose.material3.adaptive:adaptive-navigation:1.3.0")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-util")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.fragment:fragment-ktx:1.8.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.5")
-    implementation("androidx.navigation:navigation-fragment-ktx:2.8.0")
-    implementation("androidx.navigation:navigation-ui-ktx:2.8.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.5")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.10.2")
+    implementation("androidx.navigation:navigation-ui-ktx:2.10.2")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.slidingpanelayout:slidingpanelayout:1.2.0")
@@ -222,6 +230,7 @@ dependencies {
     implementation("com.google.android.material:material:1.9.0")
     implementation("info.debatty:java-string-similarity:2.0.0")
     implementation("io.coil-kt:coil:2.7.0")
+    implementation("net.slions.compose.preference:preference")
     implementation("org.ini4j:ini4j:0.5.4")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.2")
 }
@@ -305,25 +314,4 @@ fun runGitCommand(command: ProcessBuilder): String? {
         logger.error("$e: Cannot find git")
         return null
     }
-}
-
-android.applicationVariants.configureEach {
-    val variant = this
-    val capitalizedName = variant.name.capitalizeUS()
-
-    val copyTask = tasks.register("copyBundle$capitalizedName") {
-        doLast {
-            project.copy {
-                from(variant.outputs.first().outputFile.parentFile)
-                include("*.apk")
-                into(layout.buildDirectory.dir("bundle"))
-            }
-            project.copy {
-                from(layout.buildDirectory.dir("outputs/bundle/${variant.name}"))
-                include("*.aab")
-                into(layout.buildDirectory.dir("bundle"))
-            }
-        }
-    }
-    tasks.named("bundle$capitalizedName").configure { finalizedBy(copyTask) }
 }
