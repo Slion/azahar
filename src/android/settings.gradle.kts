@@ -19,4 +19,10 @@ dependencyResolutionManagement {
     }
 }
 
+includeBuild("../../externals/composepreference") {
+    dependencySubstitution {
+        substitute(module("net.slions.compose.preference:preference")).using(project(":preference"))
+    }
+}
+
 include(":app")
