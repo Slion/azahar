@@ -10,6 +10,12 @@
 -keep class org.ini4j.spi.IniBuilder
 -keep class org.ini4j.spi.IniFormatter
 
+# AGP 9 R8 no longer implicitly keeps the default constructor of kept classes;
+# Room instantiates the generated *Database_Impl subclasses via reflection.
+-keep class * extends androidx.room.RoomDatabase {
+    <init>(...);
+}
+
 # Suppress warnings for R8
 -dontwarn org.bouncycastle.jsse.BCSSLParameters
 -dontwarn org.bouncycastle.jsse.BCSSLSocket
