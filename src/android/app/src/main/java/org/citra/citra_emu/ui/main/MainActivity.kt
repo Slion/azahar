@@ -23,22 +23,13 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AudioFile
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.DevicesOther
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Gamepad
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Router
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.runtime.Composable
@@ -47,7 +38,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
@@ -80,8 +70,8 @@ import org.citra.citra_emu.databinding.DialogSoftwareKeyboardBinding
 import org.citra.citra_emu.dialogs.NetPlayDialog
 import org.citra.citra_emu.features.settings.SettingKeys
 import org.citra.citra_emu.features.settings.model.Settings
-import org.citra.citra_emu.features.settings.model.SettingsViewModel
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
+import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.fragments.GrantMissingFilesystemPermissionFragment
 import org.citra.citra_emu.fragments.SelectUserDirectoryDialogFragment
 import org.citra.citra_emu.fragments.UpdateUserDirectoryDialogFragment
@@ -108,7 +98,6 @@ class MainActivity :
     private lateinit var binding: ActivityMainBinding
 
     private val homeViewModel: HomeViewModel by viewModels()
-    private val settingsViewModel: SettingsViewModel by viewModels()
     private val driverViewModel: DriverViewModel by viewModels()
 
     private lateinit var navController: NavController
@@ -148,13 +137,6 @@ class MainActivity :
             !DirectoryInitialization.areCitraDirectoriesReady() &&
                 PermissionsHandler.hasWriteAccess(this) &&
                 !CitraDirectoryUtils.needToUpdateManually()
-        }
-
-        if (PermissionsHandler.hasWriteAccess(applicationContext) &&
-            DirectoryInitialization.areCitraDirectoriesReady() &&
-            !CitraDirectoryUtils.needToUpdateManually()
-        ) {
-            settingsViewModel.settings.loadSettings()
         }
 
         ThemeUtil.themeChangeListener(this)
@@ -450,32 +432,7 @@ class MainActivity :
         }
     }
 
-    /** Persists the theme values and syncs the night mode when the contrast changes. */
-    private fun onThemeValuesChange(values: ThemeValues) {
-        if (themeValues.value == values) {
-            return
-        }
-        if (themeValues.value.themeMode != values.themeMode) {
-            AppCompatDelegate.setDefaultNightMode(values.themeMode.toNightMode())
-        }
-        themeValues.value = values
-        ThemeSettings.save(CitraApplication.appContext, values)
-    }
-
-    /** Confirms and runs the settings reset from the home screen. */
-    private fun showResetSettingsDialog() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.reset_all_settings)
-            .setMessage(R.string.reset_all_settings_description)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                SettingsActivity.resetSettings()
-                Toast.makeText(this, R.string.settings_reset, Toast.LENGTH_LONG).show()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    /** The root pages of the home screen (Settings, Theme, Options, Search, Applications). */
+    /** The root pages of the home screen (Settings, Options, Search, Applications). */
     @Composable
     private fun homePages(): List<PreferencePage> {
         val userDir by homeViewModel.userDir.collectAsStateWithLifecycle()
@@ -488,67 +445,10 @@ class MainActivity :
             if (!setupDone) return@produceState
             driverViewModel.selectedDriverMetadata.collect { value = it }
         }
-        val settingsTitle = stringResource(R.string.preferences_settings)
-        val resetTitle = stringResource(R.string.reset_to_default)
-        val themePage = themePage(themeValues.value) { onThemeValuesChange(it) }
         return remember(userDir, gamesDir, driverName, themeValues.value) {
             val driverSupported = GpuDriverHelper.supportsCustomDriverLoading()
             buildHomePages(
-                settingsSections =
-                    listOf(
-                        SettingsSectionEntry(
-                            Settings.SECTION_CORE,
-                            getString(R.string.preferences_general),
-                            Icons.Filled.Settings,
-                        ),
-                        SettingsSectionEntry(
-                            Settings.SECTION_SYSTEM,
-                            getString(R.string.preferences_system),
-                            Icons.Filled.DevicesOther,
-                        ),
-                        SettingsSectionEntry(
-                            Settings.SECTION_CAMERA,
-                            getString(R.string.preferences_camera),
-                            Icons.Filled.PhotoCamera,
-                        ),
-                        SettingsSectionEntry(
-                            Settings.SECTION_CONTROLS,
-                            getString(R.string.preferences_controls),
-                            Icons.Filled.Gamepad,
-                        ),
-                        SettingsSectionEntry(
-                            Settings.SECTION_RENDERER,
-                            getString(R.string.preferences_graphics),
-                            Icons.Filled.GraphicEq,
-                        ),
-                        SettingsSectionEntry(
-                            Settings.SECTION_LAYOUT,
-                            getString(R.string.preferences_layout),
-                            Icons.Filled.FitScreen,
-                        ),
-                        SettingsSectionEntry(
-                            Settings.SECTION_NETWORK,
-                            getString(R.string.preferences_network),
-                            Icons.Filled.Lan,
-                        ),
-                        SettingsSectionEntry(
-                            Settings.SECTION_AUDIO,
-                            getString(R.string.preferences_audio),
-                            Icons.Filled.AudioFile,
-                        ),
-                        SettingsSectionEntry(
-                            Settings.SECTION_DEBUG,
-                            getString(R.string.preferences_debug),
-                            Icons.Filled.BugReport,
-                        ),
-                    ),
-                onOpenSettingsSection = { section ->
-                    SettingsActivity.launch(this, section, "")
-                },
-                onResetSettings = { showResetSettingsDialog() },
-                themePage = themePage,
-                settingsTitle = settingsTitle,
-                resetTitle = resetTitle,
+                settingsTitle = getString(R.string.preferences_settings),
                 optionsTitle = getString(R.string.home_options),
                 searchTitle = getString(R.string.home_search),
                 applicationsTitle = getString(R.string.home_games),
@@ -632,6 +532,9 @@ class MainActivity :
                             onClick = { openFragmentScreen(R.id.aboutFragment) },
                         ),
                     ),
+                onSettings = {
+                    SettingsActivity.launch(this, SettingsFile.FILE_NAME_CONFIG, "")
+                },
                 onSearch = { openFragmentScreen(R.id.searchFragment) },
                 onApplications = { openFragmentScreen(R.id.gamesFragment) },
             )
