@@ -15,6 +15,16 @@
     <string name="home_options">Options</string>
     <string name="home_search">Search</string>
     <string name="home_games">Applications</string>
+    <string name="home_theme">Theme</string>
+    <string name="theme_colors">Colors</string>
+    <string name="theme_contrast">Contrast</string>
+    <string name="theme_color">Color</string>
+    <string name="theme_tint">Neutral tint</string>
+    <string name="theme_texts">Texts</string>
+    <string name="theme_font">Font</string>
+    <string name="theme_font_size">Size</string>
+    <string name="theme_shapes">Shapes</string>
+    <string name="theme_corner">Corner</string>
     <string name="settings_description">Configure emulator settings</string>
     <string name="install_game_content">Install CIA file</string>
     <string name="install_game_content_description">Install applications, updates or DLC</string>

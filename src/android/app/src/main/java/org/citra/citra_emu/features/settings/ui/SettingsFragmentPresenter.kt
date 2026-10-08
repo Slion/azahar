@@ -51,7 +51,6 @@ import org.citra.citra_emu.utils.BuildUtil
 import org.citra.citra_emu.utils.GraphicsUtil
 import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.utils.SystemSaveGame
-import org.citra.citra_emu.utils.ThemeUtil
 
 class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) {
     private var menuTag: String? = null
@@ -2068,34 +2067,6 @@ class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) 
                     R.string.static_theme_color_description,
                     R.array.staticThemeNames,
                     R.array.staticThemeValues
-                )
-            )
-
-            val themeMode: AbstractIntSetting = object : AbstractIntSetting {
-                override var int: Int
-                    get() = preferences.getInt(Settings.PREF_THEME_MODE, -1)
-                    set(value) {
-                        preferences.edit()
-                            .putInt(Settings.PREF_THEME_MODE, value)
-                            .apply()
-                        ThemeUtil.setThemeMode(settingsActivity)
-                        settingsActivity.recreate()
-                    }
-                override val key: String? = null
-                override val section: String? = null
-                override val isRuntimeEditable: Boolean = false
-                override val valueAsString: String
-                    get() = preferences.getInt(Settings.PREF_THEME_MODE, -1).toString()
-                override val defaultValue: Any = -1
-            }
-
-            add(
-                SingleChoiceSetting(
-                    themeMode,
-                    R.string.change_theme_mode,
-                    0,
-                    R.array.themeModeEntries,
-                    R.array.themeModeValues
                 )
             )
 

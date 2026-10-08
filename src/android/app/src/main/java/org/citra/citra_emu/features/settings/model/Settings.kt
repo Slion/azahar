@@ -229,7 +229,6 @@ class Settings {
         // TODO: Move these in with the other setting keys in GenerateSettingKeys.cmake
         const val PREF_FIRST_APP_LAUNCH = "FirstApplicationLaunch"
         const val PREF_MATERIAL_YOU = "MaterialYouTheme"
-        const val PREF_THEME_MODE = "ThemeMode"
         const val PREF_BLACK_BACKGROUNDS = "BlackBackgrounds"
         const val PREF_SHOW_HOME_APPS = "ShowHomeApps"
         const val PREF_STATIC_THEME_COLOR = "StaticThemeColor"

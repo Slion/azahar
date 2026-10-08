@@ -10,21 +10,6 @@
         android:label="PlatformGamesFragment" />
 
     <fragment
-        android:id="@+id/homeSettingsFragment"
-        android:name="org.citra.citra_emu.fragments.HomeSettingsFragment"
-        android:label="HomeSettingsFragment" >
-        <action
-            android:id="@+id/action_homeSettingsFragment_to_aboutFragment"
-            app:destination="@id/aboutFragment" />
-        <action
-            android:id="@+id/action_homeSettingsFragment_to_systemFilesFragment"
-            app:destination="@id/systemFilesFragment" />
-        <action
-            android:id="@+id/action_homeSettingsFragment_to_driverManagerFragment"
-            app:destination="@id/driverManagerFragment" />
-    </fragment>
-
-    <fragment
         android:id="@+id/firstTimeSetupFragment"
         android:name="org.citra.citra_emu.fragments.SetupFragment"
         android:label="FirstTimeSetupFragment">

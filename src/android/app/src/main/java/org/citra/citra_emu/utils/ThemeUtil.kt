@@ -9,7 +9,6 @@ import android.content.res.Configuration
 import android.graphics.Color
 import androidx.annotation.ColorInt
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.preference.PreferenceManager
@@ -60,22 +59,16 @@ object ThemeUtil {
     }
 
     fun setThemeMode(activity: AppCompatActivity) {
-        val themeMode = PreferenceManager.getDefaultSharedPreferences(activity.applicationContext)
-            .getInt(Settings.PREF_THEME_MODE, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
-        activity.delegate.localNightMode = themeMode
+        // The night mode itself is owned by the Compose theme's contrast preference;
+        // here only the system bar appearance follows the activity's effective mode.
         val windowController = WindowCompat.getInsetsController(
             activity.window,
             activity.window.decorView
         )
-        when (themeMode) {
-            AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM -> when (isNightMode(activity)) {
-                false -> setLightModeSystemBars(windowController)
-                true -> setDarkModeSystemBars(windowController)
-            }
-
-            AppCompatDelegate.MODE_NIGHT_NO -> setLightModeSystemBars(windowController)
-
-            AppCompatDelegate.MODE_NIGHT_YES -> setDarkModeSystemBars(windowController)
+        if (isNightMode(activity)) {
+            setDarkModeSystemBars(windowController)
+        } else {
+            setLightModeSystemBars(windowController)
         }
     }
 
