@@ -228,6 +228,8 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.work:work-runtime:2.9.1")
     implementation("com.google.android.material:material:1.9.0")
+    // Required at runtime by net.slions.compose.preference (it logs via Timber).
+    implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("info.debatty:java-string-similarity:2.0.0")
     implementation("io.coil-kt:coil:2.7.0")
     implementation("net.slions.compose.preference:preference")
