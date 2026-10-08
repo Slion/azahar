@@ -8,24 +8,25 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.view.ViewGroup.MarginLayoutParams
+import android.widget.FrameLayout
 import android.widget.Toast
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.stringResource
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
+import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceManager
-import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.IOException
+import net.slions.compose.preference.PreferencePageScreen
+import net.slions.compose.preference.ProvidePreferenceLocals
+import net.slions.compose.preference.ProvidePreferenceTheme
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
-import org.citra.citra_emu.databinding.ActivitySettingsBinding
 import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.FloatSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
@@ -34,20 +35,34 @@ import org.citra.citra_emu.features.settings.model.Settings
 import org.citra.citra_emu.features.settings.model.SettingsViewModel
 import org.citra.citra_emu.features.settings.model.StringSetting
 import org.citra.citra_emu.features.settings.utils.SettingsFile
+import org.citra.citra_emu.ui.main.AzaharTheme
+import org.citra.citra_emu.ui.main.ThemeSettings
+import org.citra.citra_emu.ui.main.ThemeSettings.toNightMode
+import org.citra.citra_emu.ui.main.ThemeValues
+import org.citra.citra_emu.ui.main.settingsPages
 import org.citra.citra_emu.utils.DirectoryInitialization
-import org.citra.citra_emu.utils.InsetsHelper
+import org.citra.citra_emu.utils.FileUtil
+import org.citra.citra_emu.utils.Log
+import org.citra.citra_emu.utils.PermissionsHandler
 import org.citra.citra_emu.utils.RefreshRateUtil
 import org.citra.citra_emu.utils.SystemSaveGame
 import org.citra.citra_emu.utils.ThemeUtil
+import org.citra.citra_emu.utils.TurboHelper
 
+/**
+ * The settings screen: the adaptive preference pages tree (each section a nested
+ * [net.slions.compose.preference.PreferencePage.subPages] page), hosted in its own activity
+ * so the home screen and the settings tree have separate search scopes.
+ */
 class SettingsActivity :
     AppCompatActivity(),
     SettingsActivityView {
-    private val presenter = SettingsActivityPresenter(this)
-
-    private lateinit var binding: ActivitySettingsBinding
-
     private val settingsViewModel: SettingsViewModel by viewModels()
+    private val themeValues = mutableStateOf(ThemeSettings.load(CitraApplication.appContext))
+
+    // The config file is written on finish, only when a setting changed.
+    private var settingsDirty = false
+    private val settingsRefresh = mutableStateOf(0)
 
     override val settings: Settings get() = settingsViewModel.settings
 
@@ -58,136 +73,95 @@ class SettingsActivity :
 
         super.onCreate(savedInstanceState)
 
-        binding = ActivitySettingsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        val launcher = intent
-        val gameID = launcher.getStringExtra(ARG_GAME_ID)
-        val menuTag = launcher.getStringExtra(ARG_MENU_TAG)
-        presenter.onCreate(savedInstanceState, menuTag!!, gameID!!)
+        if (!DirectoryInitialization.areCitraDirectoriesReady()) {
+            DirectoryInitialization.start()
+        }
+        settingsDirty = savedInstanceState?.getBoolean(KEY_SETTINGS_DIRTY) == true
 
-        // Show "Back" button in the action bar for navigation
-        setSupportActionBar(binding.toolbarSettings)
-        supportActionBar!!.setDisplayHomeAsUpEnabled(true)
-
-        if (InsetsHelper.getSystemGestureType(applicationContext) !=
-            InsetsHelper.GESTURE_NAVIGATION
-        ) {
-            binding.navigationBarShade.setBackgroundColor(
-                ThemeUtil.getColorWithOpacity(
-                    MaterialColors.getColor(
-                        binding.navigationBarShade,
-                        com.google.android.material.R.attr.colorSurface
-                    ),
-                    ThemeUtil.SYSTEM_BAR_ALPHA
-                )
-            )
+        val gameId = intent.getStringExtra(ARG_GAME_ID).orEmpty()
+        if (!settings.isLoaded) {
+            if (gameId.isEmpty()) {
+                settings.loadSettings(this)
+            } else {
+                settings.loadSettings(gameId, this)
+            }
         }
 
-        onBackPressedDispatcher.addCallback(
-            this,
-            object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() = navigateBack()
+        setContentView(
+            ComposeView(this).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                setContent {
+                    ProvidePreferenceLocals {
+                        AzaharTheme(themeValues.value) {
+                            ProvidePreferenceTheme {
+                                PreferencePageScreen(
+                                    title = stringResource(R.string.preferences_settings),
+                                    pages =
+                                        settingsPages(
+                                            settings = settings,
+                                            gameId = gameId,
+                                            themeValues = themeValues.value,
+                                            onThemeValuesChange = { onThemeValuesChange(it) },
+                                            refresh = settingsRefresh,
+                                            onSettingChanged = { settingsDirty = true },
+                                            onReset = { showResetSettingsDialog() },
+                                        ),
+                                    onBack = { finish() },
+                                )
+                            }
+                        }
+                    }
+                }
             }
         )
-
-        setInsets()
-    }
-
-    override fun onSupportNavigateUp(): Boolean {
-        navigateBack()
-        return true
-    }
-
-    private fun navigateBack() {
-        if (supportFragmentManager.backStackEntryCount > 0) {
-            supportFragmentManager.popBackStack()
-        } else {
-            finish()
-        }
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        // Critical: If super method is not called, rotations will be busted.
-        super.onSaveInstanceState(outState)
-        presenter.saveState(outState)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        presenter.onPause()
     }
 
     override fun onResume() {
+        // The settings tree reads the native system save game (username, country, …), which
+        // is only bound to the core's CFG module after this call.
+        SystemSaveGame.load()
         super.onResume()
-        presenter.onResume()
     }
 
-    override fun onStart() {
-        super.onStart()
-        presenter.onStart()
+    override fun onPause() {
+        SystemSaveGame.save()
+        super.onPause()
+    }
+
+    // The theme can recreate this activity (contrast change); the dirty flag must survive so
+    // the config file is still written on finish.
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_SETTINGS_DIRTY, settingsDirty)
     }
 
     /**
      * If this is called, the user has left the settings screen (potentially through the
-     * home button) and will expect their changes to be persisted. So we kick off an
-     * IntentService which will do so on a background thread.
+     * home button) and will expect their changes to be persisted.
      */
     override fun onStop() {
         super.onStop()
-        presenter.onStop(isFinishing)
-    }
-
-    override fun showSettingsFragment(menuTag: String, addToStack: Boolean, gameId: String) {
-        if (!addToStack && settingsFragment != null) {
-            return
+        if (isFinishing && settingsDirty) {
+            Log.debug("[SettingsActivity] Settings activity stopping. Saving settings to INI...")
+            settingsDirty = false
+            settings.saveSettings(this)
+            // added to ensure that layout changes take effect as soon as settings window closes
+            NativeLibrary.reloadSettings()
+            NativeLibrary.updateFramebuffer(NativeLibrary.isPortraitMode())
+            updateAndroidImageVisibility()
+            TurboHelper.reloadTurbo(false) // TODO: Can this go somewhere else? -OS
         }
-
-        val transaction = supportFragmentManager.beginTransaction()
-        if (addToStack) {
-            if (areSystemAnimationsEnabled()) {
-                transaction.setCustomAnimations(
-                    R.anim.anim_settings_fragment_in,
-                    R.anim.anim_settings_fragment_out,
-                    0,
-                    R.anim.anim_pop_settings_fragment_out
-                )
-            }
-            transaction.addToBackStack(null)
-        }
-        transaction.replace(
-            R.id.frame_content,
-            SettingsFragment.newInstance(menuTag, gameId),
-            FRAGMENT_TAG
-        )
-        transaction.commit()
+        NativeLibrary.reloadSettings()
     }
 
-    private fun areSystemAnimationsEnabled(): Boolean {
-        val duration = android.provider.Settings.Global.getFloat(
-            contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f
-        )
-        val transition = android.provider.Settings.Global.getFloat(
-            contentResolver,
-            android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE,
-            1f
-        )
-        return duration != 0f && transition != 0f
-    }
-
-    override fun onSettingsFileLoaded() {
-        val fragment: SettingsFragmentView? = settingsFragment
-        fragment?.loadSettingsList()
-    }
-
-    override fun onSettingsFileNotFound() {
-        val fragment: SettingsFragmentView? = settingsFragment
-        fragment?.loadSettingsList()
-    }
+    override fun showSettingsFragment(menuTag: String, addToStack: Boolean, gameId: String) = Unit
+    override fun onSettingsFileLoaded() = Unit
+    override fun onSettingsFileNotFound() = Unit
 
     override fun showToastMessage(message: String, isLong: Boolean) {
         Toast.makeText(
@@ -198,52 +172,70 @@ class SettingsActivity :
     }
 
     override fun onSettingChanged() {
-        presenter.onSettingChanged()
+        settingsDirty = true
     }
 
-    fun onSettingsReset() {
-        // Prevents saving to a non-existent settings file
-        presenter.onSettingsReset()
-        resetSettings()
-        showToastMessage(getString(R.string.settings_reset), true)
-        finish()
+    /** Persists the theme values and syncs the night mode when the contrast changes. */
+    private fun onThemeValuesChange(values: ThemeValues) {
+        if (themeValues.value == values) {
+            return
+        }
+        if (themeValues.value.themeMode != values.themeMode) {
+            AppCompatDelegate.setDefaultNightMode(values.themeMode.toNightMode())
+        }
+        themeValues.value = values
+        ThemeSettings.save(CitraApplication.appContext, values)
     }
 
-    fun setToolbarTitle(title: String) {
-        binding.toolbarSettingsLayout.title = title
+    /** Confirms and runs the settings reset to defaults. */
+    private fun showResetSettingsDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.reset_all_settings)
+            .setMessage(R.string.reset_all_settings_description)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                SettingsActivity.resetSettings()
+                showToastMessage(getString(R.string.settings_reset), true)
+                settingsDirty = false
+                settingsRefresh.value++
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
-    private val settingsFragment: SettingsFragment?
-        get() = supportFragmentManager.findFragmentByTag(FRAGMENT_TAG) as SettingsFragment?
-
-    private fun setInsets() {
-        ViewCompat.setOnApplyWindowInsetsListener(
-            binding.frameContent
-        ) { view: View, windowInsets: WindowInsetsCompat ->
-            val barInsets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val cutoutInsets = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout())
-            view.updatePadding(
-                left = barInsets.left + cutoutInsets.left,
-                right = barInsets.right + cutoutInsets.right
+    private fun updateAndroidImageVisibility() {
+        val dataDirTreeUri: Uri
+        val dataDirDocument: DocumentFile
+        val nomediaFileDocument: DocumentFile?
+        val nomediaFileExists: Boolean
+        try {
+            dataDirTreeUri = PermissionsHandler.citraDirectory
+            dataDirDocument =
+                DocumentFile.fromTreeUri(CitraApplication.appContext, dataDirTreeUri)!!
+            nomediaFileDocument = dataDirDocument.findFile(".nomedia")
+            nomediaFileExists = (nomediaFileDocument != null)
+        } catch (e: Exception) {
+            Log.error(
+                "[SettingsActivity]: Error occurred while trying to find .nomedia, error: " +
+                    e.message
             )
+            return
+        }
 
-            val mlpAppBar = binding.appbarSettings.layoutParams as MarginLayoutParams
-            mlpAppBar.leftMargin = barInsets.left + cutoutInsets.left
-            mlpAppBar.rightMargin = barInsets.right + cutoutInsets.right
-            binding.appbarSettings.layoutParams = mlpAppBar
-
-            val mlpShade = binding.navigationBarShade.layoutParams as MarginLayoutParams
-            mlpShade.height = barInsets.bottom
-            binding.navigationBarShade.layoutParams = mlpShade
-
-            windowInsets
+        if (BooleanSetting.ANDROID_HIDE_IMAGES.boolean) {
+            if (!nomediaFileExists) {
+                Log.info("[SettingsActivity]: Attempting to create .nomedia in user data directory")
+                FileUtil.createFile(dataDirTreeUri.toString(), ".nomedia")
+            }
+        } else if (nomediaFileExists) {
+            Log.info("[SettingsActivity]: Attempting to delete .nomedia in user data directory")
+            nomediaFileDocument!!.delete()
         }
     }
 
     companion object {
         private const val ARG_MENU_TAG = "menu_tag"
         private const val ARG_GAME_ID = "game_id"
-        private const val FRAGMENT_TAG = "settings"
+        private const val KEY_SETTINGS_DIRTY = "settings_dirty"
 
         @JvmStatic
         fun launch(context: Context, menuTag: String?, gameId: String?) {
@@ -251,18 +243,6 @@ class SettingsActivity :
             settings.putExtra(ARG_MENU_TAG, menuTag)
             settings.putExtra(ARG_GAME_ID, gameId)
             context.startActivity(settings)
-        }
-
-        fun launch(
-            context: Context,
-            launcher: ActivityResultLauncher<Intent>,
-            menuTag: String?,
-            gameId: String?
-        ) {
-            val settings = Intent(context, SettingsActivity::class.java)
-            settings.putExtra(ARG_MENU_TAG, menuTag)
-            settings.putExtra(ARG_GAME_ID, gameId)
-            launcher.launch(settings)
         }
 
         /**
