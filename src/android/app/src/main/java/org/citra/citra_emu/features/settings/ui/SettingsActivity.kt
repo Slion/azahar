@@ -204,46 +204,7 @@ class SettingsActivity :
     fun onSettingsReset() {
         // Prevents saving to a non-existent settings file
         presenter.onSettingsReset()
-
-        val controllerKeys = Settings.buttonKeys + Settings.circlePadKeys + Settings.cStickKeys +
-            Settings.dPadAxisKeys + Settings.dPadButtonKeys + Settings.triggerKeys
-        val editor =
-            PreferenceManager.getDefaultSharedPreferences(CitraApplication.appContext).edit()
-        controllerKeys.forEach { editor.remove(it) }
-        editor.apply()
-
-        // Reset the static memory representation of each setting
-        BooleanSetting.clear()
-        FloatSetting.clear()
-        ScaledFloatSetting.clear()
-        IntSetting.clear()
-        StringSetting.clear()
-
-        // Delete settings file because the user may have changed values that do not exist in the UI
-        val settingsFile = SettingsFile.getSettingsFile(SettingsFile.FILE_NAME_CONFIG)
-        if (!settingsFile.delete()) {
-            throw IOException("Failed to delete $settingsFile")
-        }
-
-        // Set the root of the document tree before we create a new config file or the native code
-        // will fail when creating the file.
-        if (DirectoryInitialization.setCitraUserDirectory()) {
-            CitraApplication.documentsTree.setRoot(Uri.parse(DirectoryInitialization.userPath))
-            NativeLibrary.createConfigFile()
-        } else {
-            throw IllegalStateException("Azahar directory unavailable when accessing config file!")
-        }
-
-        // Set default values for system config file
-        SystemSaveGame.apply {
-            setUsername("AZAHAR")
-            setBirthday(11, 7)
-            setSystemLanguage(1)
-            setSoundOutputMode(1)
-            setCountryCode(49)
-            setPlayCoins(42)
-        }
-
+        resetSettings()
         showToastMessage(getString(R.string.settings_reset), true)
         finish()
     }
@@ -302,6 +263,53 @@ class SettingsActivity :
             settings.putExtra(ARG_MENU_TAG, menuTag)
             settings.putExtra(ARG_GAME_ID, gameId)
             launcher.launch(settings)
+        }
+
+        /**
+         * Resets the settings to their defaults: clears the controller keys and the static
+         * memory of each setting, deletes and recreates the config file, and restores the
+         * default system values.
+         */
+        @JvmStatic
+        fun resetSettings() {
+            val controllerKeys = Settings.buttonKeys + Settings.circlePadKeys + Settings.cStickKeys +
+                Settings.dPadAxisKeys + Settings.dPadButtonKeys + Settings.triggerKeys
+            val editor =
+                PreferenceManager.getDefaultSharedPreferences(CitraApplication.appContext).edit()
+            controllerKeys.forEach { editor.remove(it) }
+            editor.apply()
+
+            // Reset the static memory representation of each setting
+            BooleanSetting.clear()
+            FloatSetting.clear()
+            ScaledFloatSetting.clear()
+            IntSetting.clear()
+            StringSetting.clear()
+
+            // Delete settings file because the user may have changed values that do not exist in the UI
+            val settingsFile = SettingsFile.getSettingsFile(SettingsFile.FILE_NAME_CONFIG)
+            if (!settingsFile.delete()) {
+                throw IOException("Failed to delete $settingsFile")
+            }
+
+            // Set the root of the document tree before we create a new config file or the native code
+            // will fail when creating the file.
+            if (DirectoryInitialization.setCitraUserDirectory()) {
+                CitraApplication.documentsTree.setRoot(Uri.parse(DirectoryInitialization.userPath))
+                NativeLibrary.createConfigFile()
+            } else {
+                throw IllegalStateException("Azahar directory unavailable when accessing config file!")
+            }
+
+            // Set default values for system config file
+            SystemSaveGame.apply {
+                setUsername("AZAHAR")
+                setBirthday(11, 7)
+                setSystemLanguage(1)
+                setSoundOutputMode(1)
+                setCountryCode(49)
+                setPlayCoins(42)
+            }
         }
     }
 }
