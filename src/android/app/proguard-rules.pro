@@ -5,10 +5,21 @@
 # To get usable stack traces
 -dontobfuscate
 
-# Prevents crashing when using Wini
--keep class org.ini4j.spi.IniParser
--keep class org.ini4j.spi.IniBuilder
--keep class org.ini4j.spi.IniFormatter
+# Prevents crashing when using Wini. Wini resolves its parser/builder/formatter
+# through ServiceFinder and instantiates them reflectively (no META-INF/services
+# file, so the concrete classes themselves are instantiated), which needs their
+# no-arg constructors to survive shrinking. A class-only keep rule no longer keeps
+# members of library classes under the AGP 9 R8 defaults. Do NOT keep the whole
+# org.ini4j package: BeanTool references the desktop-only java.beans classes.
+-keep class org.ini4j.spi.IniParser {
+    <init>(...);
+}
+-keep class org.ini4j.spi.IniBuilder {
+    <init>(...);
+}
+-keep class org.ini4j.spi.IniFormatter {
+    <init>(...);
+}
 
 # AGP 9 R8 no longer implicitly keeps the default constructor of kept classes;
 # Room instantiates the generated *Database_Impl subclasses via reflection.
