@@ -316,8 +316,6 @@ class GamesFragment : Fragment() {
         val cutoutInsets = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout())
         val extraListSpacing = resources.getDimensionPixelSize(R.dimen.spacing_large)
         val spacingNavigation = resources.getDimensionPixelSize(R.dimen.spacing_navigation)
-        val spacingNavigationRail =
-            resources.getDimensionPixelSize(R.dimen.spacing_navigation_rail)
 
         binding.gridGames.updatePadding(
             top = barInsets.top + extraListSpacing,
@@ -329,16 +327,9 @@ class GamesFragment : Fragment() {
             barInsets.top + resources.getDimensionPixelSize(R.dimen.spacing_refresh_end)
         )
 
-        val leftInsets = barInsets.left + cutoutInsets.left
-        val rightInsets = barInsets.right + cutoutInsets.right
         val mlpSwipe = binding.swipeRefresh.layoutParams as MarginLayoutParams
-        if (ViewCompat.getLayoutDirection(view) == ViewCompat.LAYOUT_DIRECTION_LTR) {
-            mlpSwipe.leftMargin = leftInsets + spacingNavigationRail
-            mlpSwipe.rightMargin = rightInsets
-        } else {
-            mlpSwipe.leftMargin = leftInsets
-            mlpSwipe.rightMargin = rightInsets + spacingNavigationRail
-        }
+        mlpSwipe.leftMargin = barInsets.left + cutoutInsets.left
+        mlpSwipe.rightMargin = barInsets.right + cutoutInsets.right
         binding.swipeRefresh.layoutParams = mlpSwipe
 
         binding.noticeText.updatePadding(bottom = spacingNavigation)

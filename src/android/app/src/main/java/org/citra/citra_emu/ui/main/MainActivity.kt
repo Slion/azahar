@@ -11,44 +11,64 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup.MarginLayoutParams
 import android.view.WindowManager
-import android.view.animation.PathInterpolator
+import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.doOnTextChanged
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph
 import androidx.navigation.fragment.NavHostFragment
-import androidx.navigation.ui.setupWithNavController
 import androidx.preference.PreferenceManager
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
-import com.google.android.material.color.MaterialColors
-import com.google.android.material.navigation.NavigationBarView
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.TimeSource
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
-import org.citra.citra_emu.BuildConfig
-import org.citra.citra_emu.activities.EmulationActivity
+import net.slions.compose.preference.PreferencePage
+import org.citra.citra_emu.HomeNavigationDirections
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
+import org.citra.citra_emu.activities.EmulationActivity
 import org.citra.citra_emu.contracts.OpenFileResultContract
 import org.citra.citra_emu.databinding.ActivityMainBinding
+import org.citra.citra_emu.databinding.DialogSoftwareKeyboardBinding
 import org.citra.citra_emu.dialogs.NetPlayDialog
+import org.citra.citra_emu.features.settings.SettingKeys
 import org.citra.citra_emu.features.settings.model.Settings
 import org.citra.citra_emu.features.settings.model.SettingsViewModel
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
@@ -56,18 +76,20 @@ import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.fragments.GrantMissingFilesystemPermissionFragment
 import org.citra.citra_emu.fragments.SelectUserDirectoryDialogFragment
 import org.citra.citra_emu.fragments.UpdateUserDirectoryDialogFragment
+import org.citra.citra_emu.model.Game
 import org.citra.citra_emu.utils.BuildUtil
 import org.citra.citra_emu.utils.CiaInstallWorker
 import org.citra.citra_emu.utils.CitraDirectoryHelper
 import org.citra.citra_emu.utils.CitraDirectoryUtils
 import org.citra.citra_emu.utils.DirectoryInitialization
 import org.citra.citra_emu.utils.FileBrowserHelper
-import org.citra.citra_emu.utils.InsetsHelper
+import org.citra.citra_emu.utils.GameHelper
+import org.citra.citra_emu.utils.GpuDriverHelper
 import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.utils.PermissionsHandler
 import org.citra.citra_emu.utils.RefreshRateUtil
 import org.citra.citra_emu.utils.ThemeUtil
-import org.citra.citra_emu.viewmodel.GamesViewModel
+import org.citra.citra_emu.viewmodel.DriverViewModel
 import org.citra.citra_emu.viewmodel.HomeViewModel
 
 class MainActivity :
@@ -76,8 +98,15 @@ class MainActivity :
     private lateinit var binding: ActivityMainBinding
 
     private val homeViewModel: HomeViewModel by viewModels()
-    private val gamesViewModel: GamesViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
+    private val driverViewModel: DriverViewModel by viewModels()
+
+    private lateinit var navController: NavController
+
+    // Whether one of the fragment screens (game list, search, …) is shown over the Compose
+    // home screen; Compose-observable so the home screen's back handling steps aside.
+    private val fragmentScreenVisible = mutableStateOf(false)
+    private var fragmentBackCallback: OnBackPressedCallback? = null
 
     override var themeId: Int = 0
 
@@ -121,6 +150,22 @@ class MainActivity :
         NativeLibrary.initMultiplayer()
 
         binding = ActivityMainBinding.inflate(layoutInflater)
+        val composeView = ComposeView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setContent {
+                MainScreen(
+                    pages = homePages(),
+                    backEnabled = !fragmentScreenVisible.value,
+                    onBack = { finish() },
+                )
+            }
+        }
+        // Insert the Compose host behind the fragment container, so a fragment screen shown
+        // over the home screen covers it entirely.
+        binding.root.addView(composeView, 0)
         setContentView(binding.root)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -131,85 +176,29 @@ class MainActivity :
         window.navigationBarColor =
             ContextCompat.getColor(applicationContext, android.R.color.transparent)
 
-        binding.statusBarShade.setBackgroundColor(
-            ThemeUtil.getColorWithOpacity(
-                MaterialColors.getColor(
-                    binding.root,
-                    com.google.android.material.R.attr.colorSurface
-                ),
-                ThemeUtil.SYSTEM_BAR_ALPHA
-            )
-        )
-        if (InsetsHelper.getSystemGestureType(applicationContext) !=
-            InsetsHelper.GESTURE_NAVIGATION
-        ) {
-            binding.navigationBarShade.setBackgroundColor(
-                ThemeUtil.getColorWithOpacity(
-                    MaterialColors.getColor(
-                        binding.root,
-                        com.google.android.material.R.attr.colorSurface
-                    ),
-                    ThemeUtil.SYSTEM_BAR_ALPHA
-                )
-            )
-        }
-
-        var applicationsClickTimestamp = TimeSource.Monotonic.markNow()
-
-        val navHostFragment =
-            supportFragmentManager.findFragmentById(R.id.fragment_container) as NavHostFragment
-        setUpNavigation(savedInstanceState, navHostFragment.navController)
-        (binding.navigationView as NavigationBarView).setOnItemReselectedListener {
-            when (it.itemId) {
-                R.id.gamesFragment -> {
-                    if (applicationsClickTimestamp.elapsedNow() < 300.milliseconds) {
-                        Toast.makeText(this, BuildConfig.VERSION_NAME, Toast.LENGTH_LONG)
-                            .show()
-                    }
-                    applicationsClickTimestamp = TimeSource.Monotonic.markNow()
-
-                    gamesViewModel.setShouldScrollToTop(true)
+        navController =
+            (supportFragmentManager.findFragmentById(R.id.fragment_container) as NavHostFragment)
+                .navController
+        // Keep the overlay back callback in sync with the fragment back stack, re-evaluated
+        // on every stack change so it never acts on a stale value.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                navController.currentBackStack.collect { stack ->
+                    val canPop = stack.count { it.destination !is NavGraph } > 1
+                    fragmentBackCallback?.isEnabled =
+                        fragmentScreenVisible.value && !canPop
                 }
-
-                R.id.searchFragment -> gamesViewModel.setSearchFocused(true)
-
-                R.id.homeSettingsFragment -> SettingsActivity.launch(
-                    this,
-                    SettingsFile.FILE_NAME_CONFIG,
-                    ""
-                )
             }
         }
-
-        // Prevents navigation from being drawn for a short time on recreation if set to hidden
-        if (!homeViewModel.navigationVisible.value.first) {
-            binding.navigationView.visibility = View.INVISIBLE
-            binding.statusBarShade.visibility = View.INVISIBLE
-        }
+        setUpNavigation(savedInstanceState)
 
         lifecycleScope.apply {
-            launch {
-                repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    homeViewModel.navigationVisible.collect {
-                        showNavigation(it.first, it.second)
-                    }
-                }
-            }
-            launch {
-                repeatOnLifecycle(Lifecycle.State.CREATED) {
-                    homeViewModel.statusBarShadeVisible.collect {
-                        showStatusBarShade(it)
-                    }
-                }
-            }
             launch {
                 repeatOnLifecycle(Lifecycle.State.CREATED) {
                     homeViewModel.isPickingUserDir.collect { checkUserPermissions() }
                 }
             }
         }
-
-        setInsets()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -317,114 +306,253 @@ class MainActivity :
 
     fun finishSetup(navController: NavController) {
         navController.navigate(R.id.action_firstTimeSetupFragment_to_gamesFragment)
-        (binding.navigationView as NavigationBarView).setupWithNavController(navController)
     }
 
-    private fun setUpNavigation(savedInstanceState: Bundle?, navController: NavController) {
+    /**
+     * Runs the (fragment-based) first-time setup flow over the home screen on a fresh
+     * install; afterwards the nav host simply sits ready behind it.
+     */
+    private fun setUpNavigation(savedInstanceState: Bundle?) {
         val firstTimeSetup = PreferenceManager.getDefaultSharedPreferences(applicationContext)
             .getBoolean(Settings.PREF_FIRST_APP_LAUNCH, true)
 
-        if (firstTimeSetup && !homeViewModel.navigatedToSetup) {
+        if (savedInstanceState == null && firstTimeSetup && !homeViewModel.navigatedToSetup) {
             homeViewModel.setupCurrentPage = savedInstanceState?.getInt(KEY_SETUP_CURRENT_PAGE) ?: 0
             navController.navigate(R.id.firstTimeSetupFragment)
             homeViewModel.navigatedToSetup = true
+            showFragmentScreen()
+        }
+    }
+
+    /** Shows the fragment screen at [destinationId] over the home screen. */
+    private fun openFragmentScreen(destinationId: Int) {
+        if (navController.currentDestination?.id != destinationId) {
+            // A fragment screen sits at the bottom of the nav stack: swap it in instead of
+            // pushing another level on top, so back always returns to the home screen.
+            // The synchronous commit applies the swap before the container is revealed,
+            // so the previous screen never flashes.
+            navController.popBackStack()
+            navController.navigate(destinationId)
+            supportFragmentManager.executePendingTransactions()
+        }
+        showFragmentScreen()
+    }
+
+    private fun showFragmentScreen() {
+        // Re-added on each show so this callback is checked before the navigation
+        // controller's and the Compose home screen's back handlers; it acts only while
+        // the fragment screen is up and its own back stack cannot pop.
+        fragmentBackCallback?.remove()
+        val callback =
+            object : OnBackPressedCallback(false) {
+                override fun handleOnBackPressed() {
+                    hideFragmentScreen()
+                }
+            }
+        fragmentBackCallback = callback
+        callback.isEnabled = !navController.canPopBack
+        onBackPressedDispatcher.addCallback(this, callback)
+
+        binding.fragmentContainer.visibility = View.VISIBLE
+        fragmentScreenVisible.value = true
+    }
+
+    private fun hideFragmentScreen() {
+        binding.fragmentContainer.visibility = View.GONE
+        fragmentScreenVisible.value = false
+        fragmentBackCallback?.isEnabled = false
+    }
+
+    /**
+     * Launches a game through the nav host so the activity-destination bookkeeping applies:
+     * when EmulationActivity finishes, the stack pops back to the previous screen.
+     */
+    private fun launchEmulation(game: Game) {
+        navController.navigate(HomeNavigationDirections.actionGlobalEmulationActivity(game))
+    }
+
+    /**
+     * Whether the fragment screen's own back stack can pop one level. The graph itself is a
+     * back-stack entry, so only actual destinations count.
+     */
+    private val NavController.canPopBack: Boolean
+        get() = currentBackStack.value.count { it.destination !is NavGraph } > 1
+
+    private fun showArticBaseDialog() {
+        val inputBinding = DialogSoftwareKeyboardBinding.inflate(LayoutInflater.from(this))
+        var textInputValue: String = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+            .getString(SettingKeys.last_artic_base_addr(), "")!!
+
+        inputBinding.editTextInput.setText(textInputValue)
+        inputBinding.editTextInput.doOnTextChanged { text, _, _, _ ->
+            textInputValue = text.toString()
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setView(inputBinding.root)
+            .setTitle(getString(R.string.artic_base_enter_address))
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                if (textInputValue.isNotEmpty()) {
+                    PreferenceManager.getDefaultSharedPreferences(applicationContext)
+                        .edit()
+                        .putString(SettingKeys.last_artic_base_addr(), textInputValue)
+                        .apply()
+                    launchEmulation(
+                        Game(
+                            title = getString(R.string.artic_base),
+                            path = "articbase://$textInputValue",
+                            filename = ""
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun shareLog() {
+        val logDirectory =
+            DocumentFile.fromTreeUri(this, PermissionsHandler.citraDirectory)?.findFile("log")
+        val currentLog = logDirectory?.findFile("azahar_log.txt")
+        val oldLog = logDirectory?.findFile("azahar_log.old.txt")
+
+        val intent = Intent().apply {
+            action = Intent.ACTION_SEND
+            type = "text/plain"
+        }
+        if (!Log.gameLaunched && oldLog?.exists() == true) {
+            intent.putExtra(Intent.EXTRA_STREAM, oldLog.uri)
+            startActivity(Intent.createChooser(intent, getText(R.string.share_log)))
+        } else if (currentLog?.exists() == true) {
+            intent.putExtra(Intent.EXTRA_STREAM, currentLog.uri)
+            startActivity(Intent.createChooser(intent, getText(R.string.share_log)))
         } else {
-            (binding.navigationView as NavigationBarView).setupWithNavController(navController)
+            Toast.makeText(this, getText(R.string.share_log_not_found), Toast.LENGTH_SHORT)
+                .show()
         }
     }
 
-    private fun showNavigation(visible: Boolean, animated: Boolean) {
-        if (!animated) {
-            if (visible) {
-                binding.navigationView.visibility = View.VISIBLE
-            } else {
-                binding.navigationView.visibility = View.INVISIBLE
-            }
-            return
+    /** The root pages of the home screen (Options, Search, Applications). */
+    @Composable
+    private fun homePages(): List<PreferencePage> {
+        val userDir by homeViewModel.userDir.collectAsStateWithLifecycle()
+        val gamesDir by homeViewModel.gamesDir.collectAsStateWithLifecycle()
+        // The DriverViewModel cannot load before the user directory has been picked.
+        val setupDone = userDir?.isNotEmpty() == true &&
+            !PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean(Settings.PREF_FIRST_APP_LAUNCH, true)
+        val driverName by produceState<String?>(initialValue = null) {
+            if (!setupDone) return@produceState
+            driverViewModel.selectedDriverMetadata.collect { value = it }
         }
-
-        val smallLayout = resources.getBoolean(R.bool.small_layout)
-        binding.navigationView.animate().apply {
-            if (visible) {
-                binding.navigationView.visibility = View.VISIBLE
-                duration = 300
-                interpolator = PathInterpolator(0.05f, 0.7f, 0.1f, 1f)
-
-                if (smallLayout) {
-                    binding.navigationView.translationY =
-                        binding.navigationView.height.toFloat() * 2
-                    translationY(0f)
-                } else {
-                    if (ViewCompat.getLayoutDirection(binding.navigationView) ==
-                        ViewCompat.LAYOUT_DIRECTION_LTR
-                    ) {
-                        binding.navigationView.translationX =
-                            binding.navigationView.width.toFloat() * -2
-                        translationX(0f)
-                    } else {
-                        binding.navigationView.translationX =
-                            binding.navigationView.width.toFloat() * 2
-                        translationX(0f)
-                    }
-                }
-            } else {
-                duration = 300
-                interpolator = PathInterpolator(0.3f, 0f, 0.8f, 0.15f)
-
-                if (smallLayout) {
-                    translationY(binding.navigationView.height.toFloat() * 2)
-                } else {
-                    if (ViewCompat.getLayoutDirection(binding.navigationView) ==
-                        ViewCompat.LAYOUT_DIRECTION_LTR
-                    ) {
-                        translationX(binding.navigationView.width.toFloat() * -2)
-                    } else {
-                        translationX(binding.navigationView.width.toFloat() * 2)
-                    }
-                }
-            }
-        }.withEndAction {
-            if (!visible) {
-                binding.navigationView.visibility = View.INVISIBLE
-            }
-        }.start()
-    }
-
-    private fun showStatusBarShade(visible: Boolean) {
-        binding.statusBarShade.animate().apply {
-            if (visible) {
-                binding.statusBarShade.visibility = View.VISIBLE
-                binding.statusBarShade.translationY = binding.statusBarShade.height.toFloat() * -2
-                duration = 300
-                translationY(0f)
-                interpolator = PathInterpolator(0.05f, 0.7f, 0.1f, 1f)
-            } else {
-                duration = 300
-                translationY(binding.navigationView.height.toFloat() * -2)
-                interpolator = PathInterpolator(0.3f, 0f, 0.8f, 0.15f)
-            }
-        }.withEndAction {
-            if (!visible) {
-                binding.statusBarShade.visibility = View.INVISIBLE
-            }
-        }.start()
-    }
-
-    private fun setInsets() = ViewCompat.setOnApplyWindowInsetsListener(
-        binding.root
-    ) { _: View, windowInsets: WindowInsetsCompat ->
-        val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-        val mlpStatusShade = binding.statusBarShade.layoutParams as MarginLayoutParams
-        mlpStatusShade.height = insets.top
-        binding.statusBarShade.layoutParams = mlpStatusShade
-
-        // The only situation where we care to have a nav bar shade is when it's at the bottom
-        // of the screen where scrolling list elements can go behind it.
-        val mlpNavShade = binding.navigationBarShade.layoutParams as MarginLayoutParams
-        mlpNavShade.height = insets.bottom
-        binding.navigationBarShade.layoutParams = mlpNavShade
-
-        windowInsets
+        return remember(userDir, gamesDir, driverName) {
+            val driverSupported = GpuDriverHelper.supportsCustomDriverLoading()
+            buildHomePages(
+                optionsTitle = getString(R.string.home_options),
+                searchTitle = getString(R.string.home_search),
+                applicationsTitle = getString(R.string.home_games),
+                options =
+                    listOf(
+                        OptionRow(
+                            id = "settings",
+                            title = getString(R.string.grid_menu_core_settings),
+                            summary = getString(R.string.settings_description),
+                            icon = Icons.Filled.Settings,
+                            onClick = {
+                                SettingsActivity.launch(this, SettingsFile.FILE_NAME_CONFIG, "")
+                            },
+                        ),
+                        OptionRow(
+                            id = "artic_base",
+                            title = getString(R.string.artic_base_connect),
+                            summary = getString(R.string.artic_base_connect_description),
+                            icon = Icons.Filled.Router,
+                            onClick = { showArticBaseDialog() },
+                        ),
+                        OptionRow(
+                            id = "multiplayer",
+                            title = getString(R.string.multiplayer),
+                            summary = getString(R.string.multiplayer_description),
+                            icon = Icons.Filled.Groups,
+                            onClick = { displayMultiplayerDialog() },
+                        ),
+                        OptionRow(
+                            id = "install_game_content",
+                            title = getString(R.string.install_game_content),
+                            summary = getString(R.string.install_game_content_description),
+                            icon = Icons.Filled.Download,
+                            onClick = { ciaFileInstaller.launch(true) },
+                        ),
+                        OptionRow(
+                            id = "system_files",
+                            title = getString(R.string.setup_system_files),
+                            summary = getString(R.string.setup_system_files_description),
+                            icon = Icons.Filled.SystemUpdate,
+                            onClick = { openFragmentScreen(R.id.systemFilesFragment) },
+                        ),
+                        OptionRow(
+                            id = "share_log",
+                            title = getString(R.string.share_log),
+                            summary = getString(R.string.share_log_description),
+                            icon = Icons.Filled.Share,
+                            onClick = { shareLog() },
+                        ),
+                        OptionRow(
+                            id = "driver_manager",
+                            title = getString(R.string.gpu_driver_manager),
+                            summary =
+                                if (driverSupported) {
+                                    driverName
+                                        ?: getString(R.string.system_gpu_driver)
+                                } else {
+                                    getString(R.string.custom_driver_not_supported)
+                                },
+                            icon = Icons.Filled.Memory,
+                            enabled = driverSupported,
+                            onClick = { openFragmentScreen(R.id.driverManagerFragment) },
+                        ),
+                        OptionRow(
+                            id = "user_folder",
+                            title = getString(R.string.select_citra_user_folder),
+                            summary = getString(R.string.select_citra_user_folder_home_description),
+                            icon = Icons.Filled.Home,
+                            onClick = {
+                                PermissionsHandler.compatibleSelectDirectory(openCitraDirectory)
+                            },
+                        ),
+                        OptionRow(
+                            id = "games_folder",
+                            title = getString(R.string.select_games_folder),
+                            summary =
+                                if (gamesDir.isEmpty()) {
+                                    getString(R.string.select_games_folder_description)
+                                } else {
+                                    gamesDir
+                                },
+                            icon = Icons.Filled.Folder,
+                            onClick = { getGamesDirectory.launch(null) },
+                        ),
+                        OptionRow(
+                            id = "theme",
+                            title = getString(R.string.preferences_theme),
+                            summary = getString(R.string.theme_and_color_description),
+                            icon = Icons.Filled.Palette,
+                            onClick = {
+                                SettingsActivity.launch(this, Settings.SECTION_THEME, "")
+                            },
+                        ),
+                        OptionRow(
+                            id = "about",
+                            title = getString(R.string.about),
+                            summary = getString(R.string.about_description),
+                            icon = Icons.Filled.Info,
+                            onClick = { openFragmentScreen(R.id.aboutFragment) },
+                        ),
+                    ),
+                onSearch = { openFragmentScreen(R.id.searchFragment) },
+                onApplications = { openFragmentScreen(R.id.gamesFragment) },
+            )
+        }
     }
 
     private fun createOpenCitraDirectoryLauncher(
@@ -496,4 +624,27 @@ class MainActivity :
     ) { result: Uri? ->
         homeViewModel.selectedGamesDirectory = result
     }
+
+    private val getGamesDirectory =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { result ->
+            if (result == null) {
+                return@registerForActivityResult
+            }
+
+            contentResolver.takePersistableUriPermission(
+                result,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+
+            // When a new directory is picked, we currently will reset the existing games
+            // database. This effectively means that only one game directory is supported.
+            PreferenceManager.getDefaultSharedPreferences(applicationContext)
+                .edit()
+                .putString(GameHelper.KEY_GAME_PATH, result.toString())
+                .apply()
+
+            Toast.makeText(this, R.string.games_dir_selected, Toast.LENGTH_LONG).show()
+
+            homeViewModel.setGamesDir(this, result.path!!)
+        }
 }
