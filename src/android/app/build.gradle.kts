@@ -230,7 +230,16 @@ dependencies {
     implementation("com.google.android.material:material:1.9.0")
     implementation("info.debatty:java-string-similarity:2.0.0")
     implementation("io.coil-kt:coil:2.7.0")
-    implementation("net.slions.compose.toolkit:lib")
+    // The toolkit library only defines its own build types; resolve its release
+    // variant for the app's extra build types (relWithDebInfo*).
+    implementation("net.slions.compose.toolkit:lib") {
+        attributes {
+            attribute(
+                Attribute.of("com.android.build.api.attributes.BuildTypeAttr", String::class.java),
+                "release",
+            )
+        }
+    }
     implementation("org.ini4j:ini4j:0.5.4")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.2")
 }

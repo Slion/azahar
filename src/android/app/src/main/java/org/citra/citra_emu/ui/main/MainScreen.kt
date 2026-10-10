@@ -70,6 +70,7 @@ data class OptionRow(
 fun buildHomeRootPage(
     title: String,
     settingsTitle: String,
+    settingsSummary: String,
     optionsTitle: String,
     searchTitle: String,
     applicationsTitle: String,
@@ -87,6 +88,7 @@ fun buildHomeRootPage(
                 Page(
                     id = "settings",
                     title = settingsTitle,
+                    summary = settingsSummary,
                     icon = icon(Icons.Filled.Settings),
                 ) {},
             onClick = onSettings,
