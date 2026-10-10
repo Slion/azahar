@@ -22,6 +22,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
@@ -40,7 +42,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -92,6 +98,7 @@ import org.citra.citra_emu.utils.CitraDirectoryUtils
 import org.citra.citra_emu.utils.DirectoryInitialization
 import org.citra.citra_emu.utils.FileBrowserHelper
 import org.citra.citra_emu.utils.GameHelper
+import org.citra.citra_emu.utils.GameIconUtils
 import org.citra.citra_emu.utils.GpuDriverHelper
 import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.utils.PermissionsHandler
@@ -726,6 +733,25 @@ class MainActivity :
         }
     }
 
+        /** The game's icon (raw 48x48 pixels from the native scan), with the shared fallback. */
+    @Composable
+    private fun GameIcon(game: Game) {
+        val bitmap = remember(game.icon) { GameIconUtils.gameIconBitmap(game) }
+        if (bitmap != null) {
+            Image(
+                bitmap.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+            )
+        } else {
+            Image(
+                painterResource(R.drawable.no_icon),
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+            )
+        }
+    }
+
     /** The root page of the home screen (Settings, Options, Search, Applications, Games). */
     @Composable
     private fun homeRootPage(): Page {
@@ -780,6 +806,7 @@ class MainActivity :
                                         listOf(game.company, game.regions)
                                             .filter { it.isNotEmpty() }
                                             .joinToString(" · "),
+                                    icon = { GameIcon(game) },
                                 ) {
                                     item(
                                         key = "play",

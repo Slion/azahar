@@ -24,16 +24,10 @@ import org.citra.citra_emu.model.Game
 
 class GameIconFetcher(private val game: Game, private val options: Options) : Fetcher {
     override suspend fun fetch(): FetchResult = DrawableResult(
-        drawable = getGameIcon(game.icon)!!.toDrawable(options.context.resources),
+        drawable = GameIconUtils.gameIconBitmap(game)!!.toDrawable(options.context.resources),
         isSampled = false,
         dataSource = DataSource.DISK
     )
-
-    private fun getGameIcon(vector: IntArray?): Bitmap? {
-        val bitmap = Bitmap.createBitmap(48, 48, Bitmap.Config.RGB_565)
-        bitmap.copyPixelsFromBuffer(IntBuffer.wrap(vector))
-        return bitmap
-    }
 
     class Factory : Fetcher.Factory<Game> {
         override fun create(data: Game, options: Options, imageLoader: ImageLoader): Fetcher =
@@ -46,6 +40,24 @@ class GameIconKeyer : Keyer<Game> {
 }
 
 object GameIconUtils {
+    /**
+     * Decodes [game]'s icon into a 48x48 bitmap. The native layer returns the SMDH large
+     * icon (48x48 RGB_565, row-major) packed two pixels per int, so a 48*48/2 (1152)-
+     * element [IntArray]; its little-endian bytes are exactly the 2-byte-per-pixel
+     * RGB_565 stream a bitmap consumes. Returns null when the game has no icon or the
+     * pixel count is unexpected.
+     */
+    fun gameIconBitmap(game: Game): Bitmap? {
+        val pixels = game.icon
+            ?: return null
+        if (pixels.size != 48 * 48 / 2) {
+            return null
+        }
+        val bitmap = Bitmap.createBitmap(48, 48, Bitmap.Config.RGB_565)
+        bitmap.copyPixelsFromBuffer(IntBuffer.wrap(pixels))
+        return bitmap
+    }
+
     fun loadGameIcon(activity: FragmentActivity, game: Game, imageView: ImageView) {
         val imageLoader = ImageLoader.Builder(activity)
             .components {
