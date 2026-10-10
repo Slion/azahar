@@ -46,6 +46,7 @@ fun MainScreen(
                     root = root,
                     onBack = onBack,
                     backEnabled = backEnabled,
+                    showBackButton = true,
                 )
             }
         }
