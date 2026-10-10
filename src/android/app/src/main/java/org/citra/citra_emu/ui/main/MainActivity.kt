@@ -69,8 +69,11 @@ import androidx.work.WorkManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import net.slions.compose.toolkit.CardStyle
 import net.slions.compose.toolkit.Page
+import net.slions.compose.toolkit.group
 import net.slions.compose.toolkit.item
+import net.slions.compose.toolkit.section
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.HomeNavigationDirections
 import org.citra.citra_emu.NativeLibrary
@@ -752,7 +755,7 @@ class MainActivity :
         }
     }
 
-    /** The root page of the home screen (Settings, Options, Search, Applications, Games). */
+    /** The root page of the home screen: Games, Options, Settings. */
     @Composable
     private fun homeRootPage(): Page {
         val userDir by homeViewModel.userDir.collectAsStateWithLifecycle()
@@ -776,10 +779,148 @@ class MainActivity :
         }
         return remember(userDir, gamesDir, driverName, themeValues.value, games, insertedCartridge) {
             val driverSupported = GpuDriverHelper.supportsCustomDriverLoading()
-            // The game list as a catalog page (the Applications row keeps opening the
-            // legacy fragment; the two coexist while the transition runs). Each game is a
-            // page row whose detail page mirrors the legacy about-game sheet, so the
-            // catalog's search indexes and opens every game.
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val cutoff = System.currentTimeMillis() - 86_400_000L
+            val (recentlyPlayed, others) =
+                games
+                    .partition { prefs.getLong(it.keyLastPlayedTime, 0L) > cutoff }
+                    .let { (recent, rest) ->
+                        recent.sortedByDescending { prefs.getLong(it.keyLastPlayedTime, 0L) } to
+                            rest
+                    }
+
+            fun buildGamePage(game: Game): Page =
+                Page(
+                    id = "game_${game.titleId}_${game.filename}",
+                    title =
+                        if (game.fileType == "unknown") {
+                            getString(R.string.invalid_rom)
+                        } else {
+                            game.title
+                        },
+                    summary =
+                        listOf(game.company, game.regions)
+                            .filter { it.isNotEmpty() }
+                            .joinToString(" · "),
+                    icon = { GameIcon(game) },
+                ) {
+                    item(
+                        key = "play",
+                        title = getString(R.string.play),
+                        onClick = { launchApplication(game) },
+                    )
+                    if (game.company.isNotEmpty()) {
+                        item(key = "company", title = game.company)
+                    }
+                    if (game.regions.isNotEmpty()) {
+                        item(
+                            key = "region",
+                            title = getString(R.string.game_context_region),
+                            summary = translateRegions(game.regions),
+                        )
+                    }
+                    item(
+                        key = "id",
+                        title = getString(R.string.game_context_id),
+                        summary = String.format("%016X", game.titleId),
+                    )
+                    item(
+                        key = "file",
+                        title = getString(R.string.game_context_file),
+                        summary = game.filename,
+                    )
+                    item(
+                        key = "type",
+                        title = getString(R.string.game_context_type),
+                        summary = game.fileType,
+                    )
+                    item(
+                        key = "playtime",
+                        title = getString(R.string.game_context_playtime),
+                        summary =
+                            formatPlayTime(
+                                NativeLibrary.playTimeManagerGetPlayTime(game.titleId)
+                            ),
+                    )
+                    if (game.isInsertable) {
+                        item(
+                            key = "cartridge",
+                            title =
+                                if (insertedCartridge == game.path) {
+                                    getString(R.string.game_context_eject)
+                                } else {
+                                    getString(R.string.game_context_insert)
+                                },
+                            onClick = {
+                                val inserted =
+                                    if (insertedCartridge == game.path) {
+                                        ""
+                                    } else {
+                                        game.path
+                                    }
+                                insertedCartridge = inserted
+                                PreferenceManager
+                                    .getDefaultSharedPreferences(this@MainActivity)
+                                    .edit()
+                                    .putString("insertedCartridge", inserted)
+                                    .apply()
+                            },
+                        )
+                    }
+                    item(
+                        key = "cheats",
+                        title = getString(R.string.cheats),
+                        onClick = {
+                            navController.popBackStack()
+                            navController.navigate(
+                                CheatsFragmentDirections.actionGlobalCheatsFragment(game.titleId)
+                            )
+                            supportFragmentManager.executePendingTransactions()
+                            showFragmentScreen()
+                        },
+                    )
+                    item(
+                        key = "compress",
+                        title =
+                            if (game.isCompressed) {
+                                getString(R.string.decompress)
+                            } else {
+                                getString(R.string.compress)
+                            },
+                        enabled = !game.isInstalled,
+                        onClick = {
+                            val shouldCompress = !game.isCompressed
+                            val recommendedExt =
+                                NativeLibrary.getRecommendedExtension(
+                                    game.path,
+                                    shouldCompress,
+                                )
+                            val baseName = game.filename.substringBeforeLast('.')
+                            pendingCompressGame = game to shouldCompress
+                            compressDecompressLauncher.launch(
+                                "$baseName.$recommendedExt"
+                            )
+                        },
+                    )
+                    item(
+                        key = "open",
+                        title = getString(R.string.game_page_open_folders),
+                        onClick = { showOpenFoldersDialog(game) },
+                    )
+                    if (game.isInstalled) {
+                        item(
+                            key = "uninstall",
+                            title = getString(R.string.game_page_uninstall),
+                            onClick = { showUninstallDialog(game) },
+                        )
+                    }
+                    item(
+                        key = "cache",
+                        title = getString(R.string.delete_shader_cache),
+                        onClick = { showDeleteCacheDialog(game) },
+                    )
+                }
+
             val gamesPage =
                 Page(
                     id = "games",
@@ -791,140 +932,17 @@ class MainActivity :
                         )
                     },
                 ) {
-                    games.forEach { game ->
-                        item(
-                            page =
-                                Page(
-                                    id = "game_${game.titleId}_${game.filename}",
-                                    title =
-                                        if (game.fileType == "unknown") {
-                                            getString(R.string.invalid_rom)
-                                        } else {
-                                            game.title
-                                        },
-                                    summary =
-                                        listOf(game.company, game.regions)
-                                            .filter { it.isNotEmpty() }
-                                            .joinToString(" · "),
-                                    icon = { GameIcon(game) },
-                                ) {
-                                    item(
-                                        key = "play",
-                                        title = getString(R.string.play),
-                                        onClick = { launchApplication(game) },
-                                    )
-                                    if (game.company.isNotEmpty()) {
-                                        item(key = "company", title = game.company)
-                                    }
-                                    if (game.regions.isNotEmpty()) {
-                                        item(
-                                            key = "region",
-                                            title = getString(R.string.game_context_region),
-                                            summary = translateRegions(game.regions),
-                                        )
-                                    }
-                                    item(
-                                        key = "id",
-                                        title = getString(R.string.game_context_id),
-                                        summary = String.format("%016X", game.titleId),
-                                    )
-                                    item(
-                                        key = "file",
-                                        title = getString(R.string.game_context_file),
-                                        summary = game.filename,
-                                    )
-                                    item(
-                                        key = "type",
-                                        title = getString(R.string.game_context_type),
-                                        summary = game.fileType,
-                                    )
-                                    item(
-                                        key = "playtime",
-                                        title = getString(R.string.game_context_playtime),
-                                        summary =
-                                            formatPlayTime(
-                                                NativeLibrary.playTimeManagerGetPlayTime(game.titleId)
-                                            ),
-                                    )
-                                    if (game.isInsertable) {
-                                        item(
-                                            key = "cartridge",
-                                            title =
-                                                if (insertedCartridge == game.path) {
-                                                    getString(R.string.game_context_eject)
-                                                } else {
-                                                    getString(R.string.game_context_insert)
-                                                },
-                                            onClick = {
-                                                val inserted =
-                                                    if (insertedCartridge == game.path) {
-                                                        ""
-                                                    } else {
-                                                        game.path
-                                                    }
-                                                insertedCartridge = inserted
-                                                PreferenceManager
-                                                    .getDefaultSharedPreferences(this@MainActivity)
-                                                    .edit()
-                                                    .putString("insertedCartridge", inserted)
-                                                    .apply()
-                                            },
-                                        )
-                                    }
-                                    item(
-                                        key = "cheats",
-                                        title = getString(R.string.cheats),
-                                        onClick = {
-                                            navController.popBackStack()
-                                            navController.navigate(
-                                                CheatsFragmentDirections.actionGlobalCheatsFragment(game.titleId)
-                                            )
-                                            supportFragmentManager.executePendingTransactions()
-                                            showFragmentScreen()
-                                        },
-                                    )
-                                    item(
-                                        key = "compress",
-                                        title =
-                                            if (game.isCompressed) {
-                                                getString(R.string.decompress)
-                                            } else {
-                                                getString(R.string.compress)
-                                            },
-                                        enabled = !game.isInstalled,
-                                        onClick = {
-                                            val shouldCompress = !game.isCompressed
-                                            val recommendedExt =
-                                                NativeLibrary.getRecommendedExtension(
-                                                    game.path,
-                                                    shouldCompress,
-                                                )
-                                            val baseName = game.filename.substringBeforeLast('.')
-                                            pendingCompressGame = game to shouldCompress
-                                            compressDecompressLauncher.launch(
-                                                "$baseName.$recommendedExt"
-                                            )
-                                        },
-                                    )
-                                    item(
-                                        key = "open",
-                                        title = getString(R.string.game_page_open_folders),
-                                        onClick = { showOpenFoldersDialog(game) },
-                                    )
-                                    if (game.isInstalled) {
-                                        item(
-                                            key = "uninstall",
-                                            title = getString(R.string.game_page_uninstall),
-                                            onClick = { showUninstallDialog(game) },
-                                        )
-                                    }
-                                    item(
-                                        key = "cache",
-                                        title = getString(R.string.delete_shader_cache),
-                                        onClick = { showDeleteCacheDialog(game) },
-                                    )
-                                },
-                        )
+                    if (recentlyPlayed.isNotEmpty()) {
+                        section(key = "recent", title = getString(R.string.search_recently_played))
+                        group(style = CardStyle.Outlined) {
+                            recentlyPlayed.forEach { game -> item(page = buildGamePage(game)) }
+                        }
+                    }
+                    if (others.isNotEmpty()) {
+                        section(key = "others", title = getString(R.string.home_games_others))
+                        group(style = CardStyle.Outlined) {
+                            others.forEach { game -> item(page = buildGamePage(game)) }
+                        }
                     }
                 }
             buildHomeRootPage(
@@ -932,8 +950,6 @@ class MainActivity :
                 settingsTitle = getString(R.string.preferences_settings),
                 settingsSummary = getString(R.string.settings_description),
                 optionsTitle = getString(R.string.home_options),
-                searchTitle = getString(R.string.home_search),
-                applicationsTitle = getString(R.string.home_games),
                 gamesPage = gamesPage,
                 options =
                     listOf(
@@ -1018,8 +1034,6 @@ class MainActivity :
                 onSettings = {
                     SettingsActivity.launch(this, SettingsFile.FILE_NAME_CONFIG, "")
                 },
-                onSearch = { openFragmentScreen(R.id.searchFragment) },
-                onApplications = { openFragmentScreen(R.id.gamesFragment) },
             )
         }
     }

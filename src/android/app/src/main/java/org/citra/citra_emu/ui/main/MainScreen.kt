@@ -5,24 +5,24 @@
 package org.citra.citra_emu.ui.main
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import net.slions.compose.toolkit.Catalog
+import net.slions.compose.toolkit.CardStyle
 import net.slions.compose.toolkit.Page
 import net.slions.compose.toolkit.ProvidePreferenceLocals
 import net.slions.compose.toolkit.ProvidePreferenceTheme
+import net.slions.compose.toolkit.group
 import net.slions.compose.toolkit.item
 import org.citra.citra_emu.R
 
 /**
- * The home screen: the adaptive preference screen hosting the home [root] page (Settings,
- * Options, Search, Applications), themed from the user's [ThemeValues].
+ * The home screen: the adaptive preference screen hosting the home [root] page (Games,
+ * Options, Settings), themed from the user's [ThemeValues].
  *
  * @param root The root page whose items are the list pane's top level.
  * @param themeValues The current theme values, applied live by [AzaharTheme].
@@ -62,77 +62,54 @@ data class OptionRow(
 )
 
 /**
- * The root page of the home screen: Games — the game list as a page of the catalog
- * (searchable from its search), kept alongside Applications to compare the two while it
- * is being transitioned — then Settings (an action page that launches the settings
- * activity, so it owns its own search scope), Options (a page of rows, each wired to the
- * screen or dialog it opens), and Search and Applications as action pages that open the
- * existing fragment screens over the home screen.
+ * The root page of the home screen: Games, Options, and Settings as a group of filled
+ * cards. Games is a page of the catalog (searchable); Options holds rows wired to their
+ * screens or dialogs; Settings launches the settings activity.
  */
 fun buildHomeRootPage(
     title: String,
     settingsTitle: String,
     settingsSummary: String,
     optionsTitle: String,
-    searchTitle: String,
     options: List<OptionRow>,
     gamesPage: Page,
-    applicationsTitle: String,
     onSettings: () -> Unit,
-    onSearch: () -> Unit,
-    onApplications: () -> Unit,
 ): Page {
     fun icon(vector: ImageVector) =
         @Composable { Icon(imageVector = vector, contentDescription = null) }
 
     return Page(id = "home", title = title) {
-        item(page = gamesPage)
-        item(
-            page =
-                Page(
-                    id = "settings",
-                    title = settingsTitle,
-                    summary = settingsSummary,
-                    icon = icon(Icons.Filled.Settings),
-                ) {},
-            onClick = onSettings,
-        )
-        item(
-            page =
-                Page(
-                    id = "options",
-                    title = optionsTitle,
-                    icon = icon(Icons.Filled.Tune),
-                ) {
-                    options.forEach { row ->
-                        item(
-                            key = row.id,
-                            title = row.title,
-                            summary = row.summary,
-                            enabled = row.enabled,
-                            icon = icon(row.icon),
-                            onClick = if (row.enabled) row.onClick else null,
-                        )
-                    }
-                },
-        )
-        item(
-            page =
-                Page(
-                    id = "search",
-                    title = searchTitle,
-                    icon = icon(Icons.Filled.Search),
-                ) {},
-            onClick = onSearch,
-        )
-        item(
-            page =
-                Page(
-                    id = "applications",
-                    title = applicationsTitle,
-                    icon = icon(Icons.Filled.VideogameAsset),
-                ) {},
-            onClick = onApplications,
-        )
+        group(style = CardStyle.Filled) {
+            item(page = gamesPage)
+            item(
+                page =
+                    Page(
+                        id = "options",
+                        title = optionsTitle,
+                        icon = icon(Icons.Filled.Tune),
+                    ) {
+                        options.forEach { row ->
+                            item(
+                                key = row.id,
+                                title = row.title,
+                                summary = row.summary,
+                                enabled = row.enabled,
+                                icon = icon(row.icon),
+                                onClick = if (row.enabled) row.onClick else null,
+                            )
+                        }
+                    },
+            )
+            item(
+                page =
+                    Page(
+                        id = "settings",
+                        title = settingsTitle,
+                        summary = settingsSummary,
+                        icon = icon(Icons.Filled.Settings),
+                    ) {},
+                onClick = onSettings,
+            )
+        }
     }
 }
