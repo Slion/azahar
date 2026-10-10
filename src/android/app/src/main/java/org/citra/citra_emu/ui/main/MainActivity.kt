@@ -935,13 +935,25 @@ class MainActivity :
                     if (recentlyPlayed.isNotEmpty()) {
                         section(key = "recent", title = getString(R.string.search_recently_played))
                         group(style = CardStyle.Outlined) {
-                            recentlyPlayed.forEach { game -> item(page = buildGamePage(game)) }
+                            recentlyPlayed.forEach {
+                                game ->
+                                item(
+                                    page = buildGamePage(game),
+                                    onClick = { launchApplication(game) },
+                                )
+                            }
                         }
                     }
                     if (others.isNotEmpty()) {
                         section(key = "others", title = getString(R.string.home_games_others))
                         group(style = CardStyle.Outlined) {
-                            others.forEach { game -> item(page = buildGamePage(game)) }
+                            others.forEach {
+                                game ->
+                                item(
+                                    page = buildGamePage(game),
+                                    onClick = { launchApplication(game) },
+                                )
+                            }
                         }
                     }
                 }

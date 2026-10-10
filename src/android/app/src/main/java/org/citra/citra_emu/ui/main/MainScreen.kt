@@ -5,6 +5,7 @@
 package org.citra.citra_emu.ui.main
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
@@ -101,13 +102,10 @@ fun buildHomeRootPage(
                     },
             )
             item(
-                page =
-                    Page(
-                        id = "settings",
-                        title = settingsTitle,
-                        summary = settingsSummary,
-                        icon = icon(Icons.Filled.Settings),
-                    ) {},
+                title = settingsTitle,
+                summary = settingsSummary,
+                icon = icon(Icons.Filled.Settings),
+                actionIcon = icon(Icons.AutoMirrored.Filled.OpenInNew),
                 onClick = onSettings,
             )
         }
