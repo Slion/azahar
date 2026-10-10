@@ -58,7 +58,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
-import net.slions.compose.preference.PreferencePage
+import net.slions.compose.toolkit.Page
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.HomeNavigationDirections
 import org.citra.citra_emu.NativeLibrary
@@ -156,7 +156,7 @@ class MainActivity :
             )
             setContent {
                 MainScreen(
-                    pages = homePages(),
+                    root = homeRootPage(),
                     themeValues = themeValues.value,
                     backEnabled = !fragmentScreenVisible.value,
                     onBack = { finish() },
@@ -432,9 +432,9 @@ class MainActivity :
         }
     }
 
-    /** The root pages of the home screen (Settings, Options, Search, Applications). */
+    /** The root page of the home screen (Settings, Options, Search, Applications). */
     @Composable
-    private fun homePages(): List<PreferencePage> {
+    private fun homeRootPage(): Page {
         val userDir by homeViewModel.userDir.collectAsStateWithLifecycle()
         val gamesDir by homeViewModel.gamesDir.collectAsStateWithLifecycle()
         // The DriverViewModel cannot load before the user directory has been picked.
@@ -447,7 +447,8 @@ class MainActivity :
         }
         return remember(userDir, gamesDir, driverName, themeValues.value) {
             val driverSupported = GpuDriverHelper.supportsCustomDriverLoading()
-            buildHomePages(
+            buildHomeRootPage(
+                title = getString(R.string.app_name),
                 settingsTitle = getString(R.string.preferences_settings),
                 optionsTitle = getString(R.string.home_options),
                 searchTitle = getString(R.string.home_search),

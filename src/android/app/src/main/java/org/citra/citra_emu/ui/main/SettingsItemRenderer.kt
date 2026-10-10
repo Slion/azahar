@@ -34,14 +34,14 @@ import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import java.lang.NumberFormatException
 import java.text.SimpleDateFormat
-import net.slions.compose.preference.listPreference
-import net.slions.compose.preference.multiSelectListPreference
-import net.slions.compose.preference.preference
-import net.slions.compose.preference.preferenceCategory
-import net.slions.compose.preference.sliderPreference
-import net.slions.compose.preference.switchPreference
-import net.slions.compose.preference.textFieldPreference
-import net.slions.compose.preference.twoTargetIconButtonPreference
+import net.slions.compose.toolkit.item
+import net.slions.compose.toolkit.itemActionIconButton
+import net.slions.compose.toolkit.itemList
+import net.slions.compose.toolkit.itemMultiSelectList
+import net.slions.compose.toolkit.itemSlider
+import net.slions.compose.toolkit.itemSwitch
+import net.slions.compose.toolkit.itemTextField
+import net.slions.compose.toolkit.section
 import org.citra.citra_emu.R
 import org.citra.citra_emu.features.settings.model.AbstractIntSetting
 import org.citra.citra_emu.features.settings.model.AbstractStringSetting
@@ -88,8 +88,8 @@ internal fun drawableIcon(drawableResId: Int): @Composable () -> Unit =
     }
 
 /**
- * Renders one settings row. Submenu items are skipped: the screen already shows them as
- * subpage rows built from [net.slions.compose.preference.PreferencePage.subPages].
+ * Renders one settings row. Submenu items are handled by the page builders (as nested
+ * pages), so this only renders the non-submenu row types.
  */
 internal fun LazyListScope.renderSettingsItem(
     index: Int,
@@ -107,11 +107,11 @@ internal fun LazyListScope.renderSettingsItem(
     }
     when (item) {
         is HeaderSetting ->
-            preferenceCategory(key = key, title = str(item.nameId))
+            section(key = key, title = str(item.nameId))
 
         is SwitchSetting -> {
             val checked = item.isChecked
-            switchPreference(
+            itemSwitch(
                 key = key,
                 value = checked,
                 onValueChange = { newValue ->
@@ -138,7 +138,7 @@ internal fun LazyListScope.renderSettingsItem(
             val selected = item.selectedValue
             val selectedIndex = values.indexOf(selected)
             if (item.setting is AbstractIntSetting) {
-                listPreference(
+                itemList(
                     key = key,
                     value = selected,
                     onValueChange = { newValue ->
@@ -159,7 +159,7 @@ internal fun LazyListScope.renderSettingsItem(
                 )
             } else {
                 val selectedShort = selected.toShort()
-                listPreference(
+                itemList(
                     key = key,
                     value = selectedShort,
                     onValueChange = { newValue ->
@@ -185,7 +185,7 @@ internal fun LazyListScope.renderSettingsItem(
             val values = item.values ?: arrayOf("")
             val selected = item.selectedValue
             if (item.setting is AbstractStringSetting) {
-                listPreference(
+                itemList(
                     key = key,
                     value = selected,
                     onValueChange = { newValue ->
@@ -204,7 +204,7 @@ internal fun LazyListScope.renderSettingsItem(
                 )
             } else {
                 val selectedIndex = item.selectValueIndex
-                listPreference(
+                itemList(
                     key = key,
                     value = selectedIndex,
                     onValueChange = { newValue ->
@@ -238,7 +238,7 @@ internal fun LazyListScope.renderSettingsItem(
                 names.indices.toList()
             }
             val selected = item.selectedValues
-            multiSelectListPreference(
+            itemMultiSelectList(
                 key = key,
                 value = selected.toSet(),
                 onValueChange = { newValues ->
@@ -265,7 +265,13 @@ internal fun LazyListScope.renderSettingsItem(
         is SliderSetting -> {
             val value = item.selectedFloat
             val isFloat = item.setting is FloatSetting
-            sliderPreference(
+            // The Material slider only steps when the range divides evenly, so the grid
+            // starts at the first multiple of the step (e.g. 10, 20, ... for a 1..200
+            // range with step 10); if that still does not divide, the slider stays
+            // continuous and the committed value snaps to the step grid.
+            val start = ((item.min + item.step - 1) / item.step) * item.step
+            val stepped = !isFloat && (item.max - start) % item.step == 0
+            itemSlider(
                 key = key,
                 value = value,
                 onValueChange = { newValue ->
@@ -276,7 +282,8 @@ internal fun LazyListScope.renderSettingsItem(
                                 builder.putSetting(item.setSelectedValue(newValue))
                             }
                         } else {
-                            val intValue = newValue.roundToInt()
+                            val intValue = ((newValue / item.step).roundToInt() * item.step)
+                                .coerceIn(item.min, item.max)
                             if (intValue != value.roundToInt()) {
                                 actions.onSettingsChanged()
                                 builder.putSetting(item.setSelectedValue(intValue))
@@ -289,8 +296,10 @@ internal fun LazyListScope.renderSettingsItem(
                 sliderValue = value,
                 onSliderValueChange = {},
                 title = str(item.nameId),
-                valueRange = item.min.toFloat()..item.max.toFloat(),
-                valueSteps = if (isFloat) 0 else item.max - item.min,
+                // steps counts the intermediate positions (the endpoints are always allowed),
+                // so a 10..200 range with step 10 needs 18, not 19.
+                valueRange = start.toFloat()..item.max.toFloat(),
+                valueSteps = if (stepped) (item.max - start) / item.step - 1 else 0,
                 enabled = item.isActive,
                 summary = summary,
                 valueText = { v ->
@@ -301,7 +310,7 @@ internal fun LazyListScope.renderSettingsItem(
 
         is StringInputSetting -> {
             val value = item.selectedValue
-            textFieldPreference(
+            itemTextField(
                 key = key,
                 value = value,
                 onValueChange = { newValue ->
@@ -323,7 +332,7 @@ internal fun LazyListScope.renderSettingsItem(
         }
 
         is DateTimeSetting ->
-            preference(
+            item(
                 key = key,
                 title = str(item.nameId),
                 enabled = item.isActive,
@@ -341,7 +350,7 @@ internal fun LazyListScope.renderSettingsItem(
             )
 
         is InputBindingSetting ->
-            twoTargetIconButtonPreference(
+            itemActionIconButton(
                 key = key,
                 title = str(item.nameId),
                 iconButtonIcon = {
@@ -367,7 +376,7 @@ internal fun LazyListScope.renderSettingsItem(
 
         is RunnableSetting -> {
             val iconId = item.iconId
-            preference(
+            item(
                 key = key,
                 title = str(item.nameId),
                 enabled = item.isActive,
@@ -384,10 +393,10 @@ internal fun LazyListScope.renderSettingsItem(
         }
 
         is SubmenuSetting ->
-            Unit // The screen shows submenu entries as subpage rows.
+            Unit // Submenu entries are rendered as nested pages by the page builders.
 
         else ->
-            preferenceCategory(key = key, title = str(item.nameId))
+            section(key = key, title = str(item.nameId))
     }
 }
 

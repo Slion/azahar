@@ -22,13 +22,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import net.slions.compose.preference.AccentColorOption
-import net.slions.compose.preference.ColorPreference
-import net.slions.compose.preference.ListPreference
-import net.slions.compose.preference.LiveSliderPreference
-import net.slions.compose.preference.PreferencePage
-import net.slions.compose.preference.preferenceCardGroup
-import net.slions.compose.preference.preferenceCategory
+import net.slions.compose.toolkit.ItemList
+import net.slions.compose.toolkit.Page
+import net.slions.compose.toolkit.group
+import net.slions.compose.toolkit.section
 import org.citra.citra_emu.R
 
 /**
@@ -39,7 +36,7 @@ import org.citra.citra_emu.R
 internal fun themePage(
     values: ThemeValues,
     onValuesChange: (ThemeValues) -> Unit,
-): PreferencePage {
+): Page {
     val dark = effectiveDarkTheme(values.themeMode, isSystemInDarkTheme())
     val defaultAccent = systemDefaultAccentColor(dark)
     // Row text resolved up front: the page's content lambda is a plain LazyListScope
@@ -53,15 +50,15 @@ internal fun themePage(
     val fontSizeTitle = stringResource(R.string.theme_font_size)
     val shapesTitle = stringResource(R.string.theme_shapes)
     val cornerTitle = stringResource(R.string.theme_corner)
-    return PreferencePage(
+    return Page(
         id = "theme",
         title = stringResource(R.string.home_theme),
         icon = { Icon(imageVector = Icons.Filled.Palette, contentDescription = null) },
     ) {
-        preferenceCategory(key = "theme_colors_category", title = colorsTitle)
-        preferenceCardGroup(key = "theme_colors_group") {
-            card(title = contrastTitle, summary = values.themeMode.label) {
-                ListPreference(
+        section(key = "theme_colors_category", title = colorsTitle)
+        group(key = "theme_colors_group") {
+            item(title = contrastTitle, summary = values.themeMode.label) {
+                ItemList(
                     value = values.themeMode,
                     onValueChange = { onValuesChange(values.copy(themeMode = it)) },
                     values = ThemeMode.entries,
@@ -71,7 +68,7 @@ internal fun themePage(
                     valueToText = { AnnotatedString(it.label) },
                 )
             }
-            card(title = colorTitle, summary = accentNameOf(values.accent)) {
+            item(title = colorTitle, summary = accentNameOf(values.accent)) {
                 ColorPreference(
                     value = values.accent ?: "",
                     onValueChange = { onValuesChange(values.copy(accent = it.ifEmpty { null })) },
@@ -82,8 +79,8 @@ internal fun themePage(
                     defaultOptionColor = defaultAccent,
                 )
             }
-            card(title = tintTitle) {
-                LiveSliderPreference(
+            item(title = tintTitle) {
+                LiveItemSlider(
                     title = tintTitle,
                     value = (values.tintFactorPercent ?: DEFAULT_TINT_FACTOR_PERCENT).toFloat(),
                     onValueChange = { onValuesChange(values.copy(tintFactorPercent = it.toInt())) },
@@ -98,10 +95,10 @@ internal fun themePage(
             }
         }
 
-        preferenceCategory(key = "theme_text_category", title = textsTitle)
-        preferenceCardGroup(key = "theme_text_group") {
-            card(title = fontTitle, summary = fontLabel(values.fontFamily)) {
-                ListPreference(
+        section(key = "theme_text_category", title = textsTitle)
+        group(key = "theme_text_group") {
+            item(title = fontTitle, summary = fontLabel(values.fontFamily)) {
+                ItemList(
                     value = values.fontFamily ?: ThemeValues.DEFAULT_FONT,
                     onValueChange = { onValuesChange(values.copy(fontFamily = it)) },
                     values = ThemeValues.FONT_FAMILIES,
@@ -111,8 +108,8 @@ internal fun themePage(
                     valueToText = { AnnotatedString(fontLabel(it)) },
                 )
             }
-            card(title = fontSizeTitle) {
-                LiveSliderPreference(
+            item(title = fontSizeTitle) {
+                LiveItemSlider(
                     title = fontSizeTitle,
                     value = (values.fontSizePercent ?: DEFAULT_FONT_SIZE_PERCENT).toFloat(),
                     onValueChange = { onValuesChange(values.copy(fontSizePercent = it.toInt())) },
@@ -126,10 +123,10 @@ internal fun themePage(
             }
         }
 
-        preferenceCategory(key = "theme_shapes_category", title = shapesTitle)
-        preferenceCardGroup(key = "theme_shapes_group") {
-            card(title = cornerTitle) {
-                LiveSliderPreference(
+        section(key = "theme_shapes_category", title = shapesTitle)
+        group(key = "theme_shapes_group") {
+            item(title = cornerTitle) {
+                LiveItemSlider(
                     title = cornerTitle,
                     value = (values.cornerRadiusDp ?: DEFAULT_CORNER_RADIUS_DP).toFloat(),
                     onValueChange = { onValuesChange(values.copy(cornerRadiusDp = it.toInt())) },

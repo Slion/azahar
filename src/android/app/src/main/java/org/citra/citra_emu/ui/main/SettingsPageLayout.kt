@@ -9,7 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.MutableState
-import net.slions.compose.preference.PreferencePage
+import net.slions.compose.toolkit.Page
 import org.citra.citra_emu.R
 import org.citra.citra_emu.features.settings.model.Settings
 import org.citra.citra_emu.features.settings.ui.SettingsListActions
@@ -22,7 +22,7 @@ internal fun settingsPageLayout(
     builder: SettingsListBuilder,
     actions: SettingsListActions,
     refresh: MutableState<Int>,
-): PreferencePage =
+): Page =
     settingsPage(
         activity,
         builder,

@@ -19,9 +19,9 @@ dependencyResolutionManagement {
     }
 }
 
-includeBuild("../../externals/composepreference") {
+includeBuild("../../externals/composetoolkit") {
     dependencySubstitution {
-        substitute(module("net.slions.compose.preference:preference")).using(project(":preference"))
+        substitute(module("net.slions.compose.toolkit:lib")).using(project(":lib"))
     }
 }
 
