@@ -16,6 +16,7 @@
     <string name="home_search">Search</string>
     <string name="home_games">Applications</string>
     <string name="home_games_page">Games</string>
+    <string name="home_games_others">Others</string>
     <string name="home_theme">Theme</string>
     <string name="theme_colors">Colors</string>
     <string name="theme_contrast">Contrast</string>
