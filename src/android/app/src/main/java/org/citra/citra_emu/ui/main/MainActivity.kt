@@ -450,6 +450,7 @@ class MainActivity :
             buildHomeRootPage(
                 title = getString(R.string.app_name),
                 settingsTitle = getString(R.string.preferences_settings),
+                settingsSummary = getString(R.string.settings_description),
                 optionsTitle = getString(R.string.home_options),
                 searchTitle = getString(R.string.home_search),
                 applicationsTitle = getString(R.string.home_games),
