@@ -255,7 +255,8 @@ class SettingsListBuilder(
                     200,
                     "%",
                     IntSetting.FRAME_LIMIT.key,
-                    IntSetting.FRAME_LIMIT.defaultValue.toFloat()
+                    IntSetting.FRAME_LIMIT.defaultValue.toFloat(),
+                    step = 10
                 )
             )
             add(
@@ -267,7 +268,8 @@ class SettingsListBuilder(
                     400,
                     "%",
                     IntSetting.TURBO_LIMIT.key,
-                    IntSetting.TURBO_LIMIT.defaultValue.toFloat()
+                    IntSetting.TURBO_LIMIT.defaultValue.toFloat(),
+                    step = 20
                 )
             )
             add(

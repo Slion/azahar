@@ -24,7 +24,8 @@ class SliderSetting(
     val defaultValue: Float? = null,
     override var isEnabled: Boolean = true,
     @StringRes override var disabledMessage: Int =
-        R.string.setting_disabled_description_incompatible_setting
+        R.string.setting_disabled_description_incompatible_setting,
+    val step: Int = 1
 ) : SettingsItem(setting, titleId, descriptionId) {
     override val type = TYPE_SLIDER
     val selectedFloat: Float

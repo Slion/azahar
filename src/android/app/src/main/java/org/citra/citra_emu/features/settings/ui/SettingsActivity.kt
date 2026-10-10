@@ -21,9 +21,9 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.IOException
-import net.slions.compose.preference.PreferencePageScreen
-import net.slions.compose.preference.ProvidePreferenceLocals
-import net.slions.compose.preference.ProvidePreferenceTheme
+import net.slions.compose.toolkit.Catalog
+import net.slions.compose.toolkit.ProvidePreferenceLocals
+import net.slions.compose.toolkit.ProvidePreferenceTheme
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
@@ -51,7 +51,7 @@ import org.citra.citra_emu.utils.TurboHelper
 
 /**
  * The settings screen: the adaptive preference pages tree (each section a nested
- * [net.slions.compose.preference.PreferencePage.subPages] page), hosted in its own activity
+ * [net.slions.compose.toolkit.Page] page), hosted in its own activity
  * so the home screen and the settings tree have separate search scopes.
  */
 class SettingsActivity :
@@ -99,9 +99,9 @@ class SettingsActivity :
                     ProvidePreferenceLocals {
                         AzaharTheme(themeValues.value) {
                             ProvidePreferenceTheme {
-                                PreferencePageScreen(
+                                Catalog(
                                     title = stringResource(R.string.preferences_settings),
-                                    pages =
+                                    root =
                                         settingsPages(
                                             settings = settings,
                                             gameId = gameId,
