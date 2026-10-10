@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.outlined.VideogameAsset
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -753,7 +755,16 @@ class MainActivity :
             // page row whose detail page mirrors the legacy about-game sheet, so the
             // catalog's search indexes and opens every game.
             val gamesPage =
-                Page(id = "games", title = getString(R.string.home_games_page)) {
+                Page(
+                    id = "games",
+                    title = getString(R.string.home_games_page),
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Outlined.VideogameAsset,
+                            contentDescription = null,
+                        )
+                    },
+                ) {
                     games.forEach { game ->
                         item(
                             page =

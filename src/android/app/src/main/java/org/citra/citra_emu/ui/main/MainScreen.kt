@@ -62,12 +62,12 @@ data class OptionRow(
 )
 
 /**
- * The root page of the home screen: Settings (an action page that launches the settings
- * activity, so it owns its own search scope), then Options (a page of rows, each wired to
- * the screen or dialog it opens), then Search and Applications as action pages that open
- * the existing fragment screens over the home screen, and Games — the same list as a
- * page of the catalog (searchable from its search) — kept alongside Applications to
- * compare the two while it is being transitioned.
+ * The root page of the home screen: Games — the game list as a page of the catalog
+ * (searchable from its search), kept alongside Applications to compare the two while it
+ * is being transitioned — then Settings (an action page that launches the settings
+ * activity, so it owns its own search scope), Options (a page of rows, each wired to the
+ * screen or dialog it opens), and Search and Applications as action pages that open the
+ * existing fragment screens over the home screen.
  */
 fun buildHomeRootPage(
     title: String,
@@ -86,6 +86,7 @@ fun buildHomeRootPage(
         @Composable { Icon(imageVector = vector, contentDescription = null) }
 
     return Page(id = "home", title = title) {
+        item(page = gamesPage)
         item(
             page =
                 Page(
@@ -133,6 +134,5 @@ fun buildHomeRootPage(
                 ) {},
             onClick = onApplications,
         )
-        item(page = gamesPage)
     }
 }
