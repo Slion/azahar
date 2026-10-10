@@ -65,7 +65,9 @@ data class OptionRow(
  * The root page of the home screen: Settings (an action page that launches the settings
  * activity, so it owns its own search scope), then Options (a page of rows, each wired to
  * the screen or dialog it opens), then Search and Applications as action pages that open
- * the existing fragment screens over the home screen instead of navigating within it.
+ * the existing fragment screens over the home screen, and Games — the same list as a
+ * page of the catalog (searchable from its search) — kept alongside Applications to
+ * compare the two while it is being transitioned.
  */
 fun buildHomeRootPage(
     title: String,
@@ -73,8 +75,9 @@ fun buildHomeRootPage(
     settingsSummary: String,
     optionsTitle: String,
     searchTitle: String,
-    applicationsTitle: String,
     options: List<OptionRow>,
+    gamesPage: Page,
+    applicationsTitle: String,
     onSettings: () -> Unit,
     onSearch: () -> Unit,
     onApplications: () -> Unit,
@@ -130,5 +133,6 @@ fun buildHomeRootPage(
                 ) {},
             onClick = onApplications,
         )
+        item(page = gamesPage)
     }
 }

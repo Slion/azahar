@@ -37,8 +37,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.widget.doOnTextChanged
@@ -57,8 +59,10 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.slions.compose.toolkit.Page
+import net.slions.compose.toolkit.item
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.HomeNavigationDirections
 import org.citra.citra_emu.NativeLibrary
@@ -68,11 +72,14 @@ import org.citra.citra_emu.contracts.OpenFileResultContract
 import org.citra.citra_emu.databinding.ActivityMainBinding
 import org.citra.citra_emu.databinding.DialogSoftwareKeyboardBinding
 import org.citra.citra_emu.dialogs.NetPlayDialog
+import org.citra.citra_emu.features.cheats.ui.CheatsFragmentDirections
 import org.citra.citra_emu.features.settings.SettingKeys
 import org.citra.citra_emu.features.settings.model.Settings
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
 import org.citra.citra_emu.features.settings.utils.SettingsFile
+import org.citra.citra_emu.fragments.CompressProgressDialogFragment
 import org.citra.citra_emu.fragments.GrantMissingFilesystemPermissionFragment
+import org.citra.citra_emu.fragments.IndeterminateProgressDialogFragment
 import org.citra.citra_emu.fragments.SelectUserDirectoryDialogFragment
 import org.citra.citra_emu.fragments.UpdateUserDirectoryDialogFragment
 import org.citra.citra_emu.model.Game
@@ -89,7 +96,9 @@ import org.citra.citra_emu.utils.PermissionsHandler
 import org.citra.citra_emu.utils.RefreshRateUtil
 import org.citra.citra_emu.utils.ThemeUtil
 import org.citra.citra_emu.ui.main.ThemeSettings.toNightMode
+import org.citra.citra_emu.viewmodel.CompressProgressDialogViewModel
 import org.citra.citra_emu.viewmodel.DriverViewModel
+import org.citra.citra_emu.viewmodel.GamesViewModel
 import org.citra.citra_emu.viewmodel.HomeViewModel
 
 class MainActivity :
@@ -99,6 +108,9 @@ class MainActivity :
 
     private val homeViewModel: HomeViewModel by viewModels()
     private val driverViewModel: DriverViewModel by viewModels()
+    // Activity-scoped, so it is the same instance GamesFragment observes: the home
+    // screen's Games page and the fragment stay in sync.
+    private val gamesViewModel: GamesViewModel by viewModels()
 
     private lateinit var navController: NavController
 
@@ -372,6 +384,286 @@ class MainActivity :
     }
 
     /**
+     * Launches a game tapped in the home screen's Games page: refreshes the library if the
+     * file is gone (like the list's row tap) and records the last-played time.
+     */
+    private fun launchApplication(game: Game) {
+        if (!game.isInstalled &&
+            !NativeLibrary.nativeFileExists(NativeLibrary.getNativePath(game.path.toUri()))) {
+            Toast.makeText(this, R.string.loader_error_file_not_found, Toast.LENGTH_LONG).show()
+            gamesViewModel.reloadGames(true)
+            return
+        }
+        PreferenceManager.getDefaultSharedPreferences(applicationContext).edit()
+            .putLong(game.keyLastPlayedTime, System.currentTimeMillis())
+            .apply()
+        launchEmulation(game)
+    }
+
+    /** Formats a playtime in seconds the way the legacy about-game sheet does. */
+    private fun formatPlayTime(seconds: Long): String =
+        when {
+            seconds >= 3600 -> "${seconds / 3600}h ${seconds % 3600 / 60}m ${seconds % 60}s"
+            seconds >= 60 -> "${seconds / 60}m ${seconds % 60}s"
+            else -> "${seconds}s"
+        }
+
+    /** Localizes the pipe-separated region list, as the legacy list does. */
+    private fun translateRegions(regionsString: String): String =
+        regionsString
+            .split("|")
+            .map {
+                val res =
+                    when (it) {
+                        "Japan" -> R.string.japan
+                        "North America" -> R.string.north_america
+                        "Europe" -> R.string.europe
+                        "Australia" -> R.string.australia
+                        "China" -> R.string.china
+                        "Korea" -> R.string.korea
+                        "Taiwan" -> R.string.taiwan
+                        "Region free" -> R.string.region_free
+                        "Invalid region" -> R.string.invalid_region
+                        "" -> R.string.invalid_region
+                        else -> {
+                            Log.error("[MainActivity] Unrecognized region string \"$it\"")
+                            R.string.region_get_error
+                        }
+                    }
+                getString(res)
+            }
+            .joinToString(", ")
+
+    /** The per-title folders of the installed game, as the legacy list computes them. */
+    private data class GameDirs(
+        val gameDir: String,
+        val saveDir: String,
+        val dlcDir: String,
+        val updatesDir: String,
+        val extraDir: String,
+        val appDir: String,
+    )
+
+    private fun gameDirectories(game: Game): GameDirs {
+        val basePath =
+            "sdmc/Nintendo 3DS/00000000000000000000000000000000/00000000000000000000000000000000"
+        val titleId = String.format("%016x", game.titleId).lowercase()
+        return GameDirs(
+            gameDir = game.path.substringBeforeLast("/"),
+            saveDir = basePath + "/title/${titleId.substring(0, 8)}/${titleId.substring(8)}/data/00000001",
+            dlcDir = basePath + "/title/0004008c/${titleId.substring(8)}/content",
+            updatesDir = basePath + "/title/0004000e/${titleId.substring(8)}/content",
+            extraDir =
+                basePath +
+                    "/extdata/00000000/" +
+                    String.format("%016X", game.titleId).substring(8, 14).padStart(8, '0'),
+            appDir =
+                game.path
+                    .substringBeforeLast("/")
+                    .split("/")
+                    .filter { it.isNotEmpty() }
+                    .joinToString("/"),
+        )
+    }
+
+    /** Whether the game's [dir] (relative to the user directory) exists on the device. */
+    private fun gameFolderExists(dir: String): Boolean =
+        CitraApplication.documentsTree.folderUriHelper(dir)?.let {
+            DocumentFile.fromTreeUri(this, it)?.exists()
+        } ?: false
+
+    /** The "open folder" entries of the legacy sheet as a single-choice dialog. */
+    private fun showOpenFoldersDialog(game: Game) {
+        val dirs = gameDirectories(game)
+        val entries =
+            listOf(
+                R.string.game_context_open_app to dirs.appDir,
+                R.string.game_context_open_save_dir to dirs.saveDir,
+                R.string.game_context_open_updates to dirs.updatesDir,
+                R.string.game_context_open_dlc to dirs.dlcDir,
+                R.string.game_context_open_extra to dirs.extraDir,
+            ).filter { gameFolderExists(it.second) }
+        if (entries.isEmpty()) {
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.game_page_open_folders)
+            .setItems(entries.map { getString(it.first) }.toTypedArray()) { _, which ->
+                val uri =
+                    DocumentFile.fromTreeUri(
+                        this,
+                        CitraApplication.documentsTree.folderUriHelper(entries[which].second)!!,
+                    )!!.uri
+                val intent =
+                    Intent(Intent.ACTION_VIEW)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .setType("*/*")
+                intent.data = uri
+                startActivity(intent)
+            }
+            .show()
+    }
+
+    /** The "uninstall" entries of the legacy sheet as a single-choice dialog. */
+    private fun showUninstallDialog(game: Game) {
+        val dirs = gameDirectories(game)
+        val entries =
+            listOf(
+                R.string.uninstall_cia to dirs.gameDir,
+                R.string.game_context_uninstall_dlc to dirs.dlcDir,
+                R.string.game_context_uninstall_updates to dirs.updatesDir,
+            ).filter { gameFolderExists(it.second) }
+        if (entries.isEmpty()) {
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.game_page_uninstall)
+            .setItems(entries.map { getString(it.first) }.toTypedArray()) { _, which ->
+                val label = entries[which].first
+                IndeterminateProgressDialogFragment
+                    .newInstance(
+                        this,
+                        R.string.uninstalling,
+                        false,
+                        {
+                            when (label) {
+                                R.string.uninstall_cia ->
+                                    NativeLibrary.uninstallTitle(game.titleId, game.mediaType)
+                                R.string.game_context_uninstall_dlc ->
+                                    NativeLibrary.uninstallTitle(
+                                        game.titleId or 0x8C00000000L,
+                                        Game.MediaType.SDMC,
+                                    )
+                                R.string.game_context_uninstall_updates ->
+                                    NativeLibrary.uninstallTitle(
+                                        game.titleId or 0xE00000000L,
+                                        Game.MediaType.SDMC,
+                                    )
+                            }
+                            gamesViewModel.reloadGames(true)
+                        },
+                    )
+                    .show(supportFragmentManager, IndeterminateProgressDialogFragment.TAG)
+            }
+            .show()
+    }
+
+    /** Deletes the game's shader cache for the chosen backend, as the legacy sheet does. */
+    private fun showDeleteCacheDialog(game: Game) {
+        val options = arrayOf(getString(R.string.vulkan), getString(R.string.opengles))
+        var selectedIndex = -1
+        val dialog =
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.delete_cache_select_backend)
+                .setSingleChoiceItems(options, -1) { _, which ->
+                    selectedIndex = which
+                }
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    val progToast =
+                        Toast.makeText(
+                            CitraApplication.appContext,
+                            R.string.deleting_shader_cache,
+                            Toast.LENGTH_LONG,
+                        )
+                    progToast.show()
+
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        when (selectedIndex) {
+                            0 -> NativeLibrary.deleteVulkanShaderCache(game.titleId)
+                            1 -> NativeLibrary.deleteOpenGLShaderCache(game.titleId)
+                        }
+
+                        runOnUiThread {
+                            progToast.cancel()
+                            Toast.makeText(
+                                CitraApplication.appContext,
+                                R.string.shader_cache_deleted,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
+                .create()
+
+        dialog.setOnShowListener {
+            val positiveButton = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+            positiveButton.isEnabled = false
+
+            val listView = dialog.listView
+            listView.setOnItemClickListener {
+                _,
+                _,
+                position,
+                _ ->
+                    selectedIndex = position
+                    positiveButton.isEnabled = true
+            }
+        }
+
+        dialog.show()
+    }
+
+    /**
+     * Compresses or decompresses the [game]'s file to [outputUri] (the document picker's
+     * target), mirroring the legacy list's compression flow.
+     */
+    private fun compressGameFile(game: Game, outputUri: Uri, shouldCompress: Boolean) {
+        val outputPath =
+            if (!BuildUtil.isGooglePlayBuild) {
+                "!" + NativeLibrary.getNativePath(outputUri)
+            } else {
+                outputUri.toString()
+            }
+        CompressProgressDialogViewModel.reset()
+        val dialog = CompressProgressDialogFragment.newInstance(shouldCompress, outputPath)
+        dialog.showNow(supportFragmentManager, CompressProgressDialogFragment.TAG)
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val status =
+                if (shouldCompress) {
+                    NativeLibrary.compressFile(game.path, outputPath)
+                } else {
+                    NativeLibrary.decompressFile(game.path, outputPath)
+                }
+
+            runOnUiThread {
+                dialog.dismiss()
+                val resId =
+                    when (status) {
+                        NativeLibrary.CompressStatus.SUCCESS ->
+                            if (shouldCompress) {
+                                R.string.compress_success
+                            } else {
+                                R.string.decompress_success
+                            }
+                        NativeLibrary.CompressStatus.COMPRESS_UNSUPPORTED ->
+                            R.string.compress_unsupported
+                        NativeLibrary.CompressStatus.COMPRESS_ALREADY_COMPRESSED ->
+                            R.string.compress_already
+                        NativeLibrary.CompressStatus.COMPRESS_FAILED -> R.string.compress_failed
+                        NativeLibrary.CompressStatus.DECOMPRESS_UNSUPPORTED ->
+                            R.string.decompress_unsupported
+                        NativeLibrary.CompressStatus.DECOMPRESS_NOT_COMPRESSED ->
+                            R.string.decompress_not_compressed
+                        NativeLibrary.CompressStatus.DECOMPRESS_FAILED ->
+                            R.string.decompress_failed
+                        NativeLibrary.CompressStatus.INSTALLED_APPLICATION ->
+                            R.string.compress_decompress_installed_app
+                    }
+
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setMessage(getString(resId))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+
+                gamesViewModel.reloadGames(false)
+            }
+        }
+    }
+
+    /**
      * Whether the fragment screen's own back stack can pop one level. The graph itself is a
      * back-stack entry, so only actual destinations count.
      */
@@ -432,11 +724,12 @@ class MainActivity :
         }
     }
 
-    /** The root page of the home screen (Settings, Options, Search, Applications). */
+    /** The root page of the home screen (Settings, Options, Search, Applications, Games). */
     @Composable
     private fun homeRootPage(): Page {
         val userDir by homeViewModel.userDir.collectAsStateWithLifecycle()
         val gamesDir by homeViewModel.gamesDir.collectAsStateWithLifecycle()
+        val games by gamesViewModel.games.collectAsStateWithLifecycle()
         // The DriverViewModel cannot load before the user directory has been picked.
         val setupDone = userDir?.isNotEmpty() == true &&
             !PreferenceManager.getDefaultSharedPreferences(this)
@@ -445,8 +738,157 @@ class MainActivity :
             if (!setupDone) return@produceState
             driverViewModel.selectedDriverMetadata.collect { value = it }
         }
-        return remember(userDir, gamesDir, driverName, themeValues.value) {
+        // The inserted-cartridge preference is shared with the legacy list; mirror it so
+        // the game page's row label updates when it is toggled here.
+        var insertedCartridge by remember {
+            mutableStateOf(
+                PreferenceManager.getDefaultSharedPreferences(this)
+                    .getString("insertedCartridge", "") ?: ""
+            )
+        }
+        return remember(userDir, gamesDir, driverName, themeValues.value, games, insertedCartridge) {
             val driverSupported = GpuDriverHelper.supportsCustomDriverLoading()
+            // The game list as a catalog page (the Applications row keeps opening the
+            // legacy fragment; the two coexist while the transition runs). Each game is a
+            // page row whose detail page mirrors the legacy about-game sheet, so the
+            // catalog's search indexes and opens every game.
+            val gamesPage =
+                Page(id = "games", title = getString(R.string.home_games_page)) {
+                    games.forEach { game ->
+                        item(
+                            page =
+                                Page(
+                                    id = "game_${game.titleId}_${game.filename}",
+                                    title =
+                                        if (game.fileType == "unknown") {
+                                            getString(R.string.invalid_rom)
+                                        } else {
+                                            game.title
+                                        },
+                                    summary =
+                                        listOf(game.company, game.regions)
+                                            .filter { it.isNotEmpty() }
+                                            .joinToString(" · "),
+                                ) {
+                                    item(
+                                        key = "play",
+                                        title = getString(R.string.play),
+                                        onClick = { launchApplication(game) },
+                                    )
+                                    if (game.company.isNotEmpty()) {
+                                        item(key = "company", title = game.company)
+                                    }
+                                    if (game.regions.isNotEmpty()) {
+                                        item(
+                                            key = "region",
+                                            title = getString(R.string.game_context_region),
+                                            summary = translateRegions(game.regions),
+                                        )
+                                    }
+                                    item(
+                                        key = "id",
+                                        title = getString(R.string.game_context_id),
+                                        summary = String.format("%016X", game.titleId),
+                                    )
+                                    item(
+                                        key = "file",
+                                        title = getString(R.string.game_context_file),
+                                        summary = game.filename,
+                                    )
+                                    item(
+                                        key = "type",
+                                        title = getString(R.string.game_context_type),
+                                        summary = game.fileType,
+                                    )
+                                    item(
+                                        key = "playtime",
+                                        title = getString(R.string.game_context_playtime),
+                                        summary =
+                                            formatPlayTime(
+                                                NativeLibrary.playTimeManagerGetPlayTime(game.titleId)
+                                            ),
+                                    )
+                                    if (game.isInsertable) {
+                                        item(
+                                            key = "cartridge",
+                                            title =
+                                                if (insertedCartridge == game.path) {
+                                                    getString(R.string.game_context_eject)
+                                                } else {
+                                                    getString(R.string.game_context_insert)
+                                                },
+                                            onClick = {
+                                                val inserted =
+                                                    if (insertedCartridge == game.path) {
+                                                        ""
+                                                    } else {
+                                                        game.path
+                                                    }
+                                                insertedCartridge = inserted
+                                                PreferenceManager
+                                                    .getDefaultSharedPreferences(this@MainActivity)
+                                                    .edit()
+                                                    .putString("insertedCartridge", inserted)
+                                                    .apply()
+                                            },
+                                        )
+                                    }
+                                    item(
+                                        key = "cheats",
+                                        title = getString(R.string.cheats),
+                                        onClick = {
+                                            navController.popBackStack()
+                                            navController.navigate(
+                                                CheatsFragmentDirections.actionGlobalCheatsFragment(game.titleId)
+                                            )
+                                            supportFragmentManager.executePendingTransactions()
+                                            showFragmentScreen()
+                                        },
+                                    )
+                                    item(
+                                        key = "compress",
+                                        title =
+                                            if (game.isCompressed) {
+                                                getString(R.string.decompress)
+                                            } else {
+                                                getString(R.string.compress)
+                                            },
+                                        enabled = !game.isInstalled,
+                                        onClick = {
+                                            val shouldCompress = !game.isCompressed
+                                            val recommendedExt =
+                                                NativeLibrary.getRecommendedExtension(
+                                                    game.path,
+                                                    shouldCompress,
+                                                )
+                                            val baseName = game.filename.substringBeforeLast('.')
+                                            pendingCompressGame = game to shouldCompress
+                                            compressDecompressLauncher.launch(
+                                                "$baseName.$recommendedExt"
+                                            )
+                                        },
+                                    )
+                                    item(
+                                        key = "open",
+                                        title = getString(R.string.game_page_open_folders),
+                                        onClick = { showOpenFoldersDialog(game) },
+                                    )
+                                    if (game.isInstalled) {
+                                        item(
+                                            key = "uninstall",
+                                            title = getString(R.string.game_page_uninstall),
+                                            onClick = { showUninstallDialog(game) },
+                                        )
+                                    }
+                                    item(
+                                        key = "cache",
+                                        title = getString(R.string.delete_shader_cache),
+                                        onClick = { showDeleteCacheDialog(game) },
+                                    )
+                                },
+                        )
+                    }
+                }
             buildHomeRootPage(
                 title = getString(R.string.app_name),
                 settingsTitle = getString(R.string.preferences_settings),
@@ -454,6 +896,7 @@ class MainActivity :
                 optionsTitle = getString(R.string.home_options),
                 searchTitle = getString(R.string.home_search),
                 applicationsTitle = getString(R.string.home_games),
+                gamesPage = gamesPage,
                 options =
                     listOf(
                         OptionRow(
@@ -600,6 +1043,19 @@ class MainActivity :
                 .build()
         )
     }
+
+    // The game picked for compression in the home screen's game page, with whether it
+    // should be compressed (true) or decompressed (false).
+    private var pendingCompressGame: Pair<Game, Boolean>? = null
+    private val compressDecompressLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) {
+            uri: Uri? ->
+                val pending = pendingCompressGame ?: return@registerForActivityResult
+                pendingCompressGame = null
+                if (uri != null) {
+                    compressGameFile(pending.first, uri, pending.second)
+                }
+        }
 
     val setupOpenCitraDirectory = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
