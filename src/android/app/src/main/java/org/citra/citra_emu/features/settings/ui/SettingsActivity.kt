@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.documentfile.provider.DocumentFile
@@ -23,6 +24,7 @@ import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.IOException
 import net.slions.compose.toolkit.Catalog
+import net.slions.compose.toolkit.CatalogOptions
 import net.slions.compose.toolkit.ProvideCatalogLocals
 import net.slions.compose.toolkit.ProvideItemTheme
 import org.citra.citra_emu.CitraApplication
@@ -117,6 +119,7 @@ class SettingsActivity :
                                             onReset = { showResetSettingsDialog() },
                                         ),
                                     onBack = { finish() },
+                                    options = CatalogOptions(paneGap = 0.dp),
                                 )
                             }
                         }

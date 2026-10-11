@@ -12,7 +12,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import net.slions.compose.toolkit.Catalog
+import net.slions.compose.toolkit.CatalogOptions
 import net.slions.compose.toolkit.CardStyle
 import net.slions.compose.toolkit.Page
 import net.slions.compose.toolkit.ProvideCatalogLocals
@@ -47,6 +49,7 @@ fun MainScreen(
                     onBack = onBack,
                     backEnabled = backEnabled,
                     showBackButton = true,
+                    options = CatalogOptions(paneGap = 0.dp),
                 )
             }
         }
