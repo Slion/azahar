@@ -12,10 +12,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import net.slions.compose.toolkit.CardStyle
 import net.slions.compose.toolkit.Page
+import net.slions.compose.toolkit.group
 import net.slions.compose.toolkit.item
+import net.slions.compose.toolkit.section
 import org.citra.citra_emu.R
 import org.citra.citra_emu.features.settings.model.Settings
+import org.citra.citra_emu.features.settings.model.view.HeaderSetting
+import org.citra.citra_emu.features.settings.model.view.SettingsItem
 import org.citra.citra_emu.features.settings.model.view.SubmenuSetting
 import org.citra.citra_emu.features.settings.ui.SettingsListActions
 import org.citra.citra_emu.features.settings.ui.SettingsListBuilder
@@ -61,32 +66,35 @@ fun settingsPages(
     val theme = themePage(themeValues, onThemeValuesChange)
     return remember(builder, refresh.value, theme) {
         Page(id = "settings", title = activity.getString(R.string.preferences_settings)) {
-            item(page = settingsPageGeneral(activity, builder, actions, refresh))
-            item(page = settingsPageSystem(activity, builder, actions, refresh))
-            item(page = settingsPageCamera(activity, builder, actions, refresh))
-            item(page = settingsPageControls(activity, builder, actions, refresh))
-            item(page = settingsPageGraphics(activity, builder, actions, refresh))
-            item(page = settingsPageLayout(activity, builder, actions, refresh))
-            item(page = settingsPageNetwork(activity, builder, actions, refresh))
-            item(page = settingsPageAudio(activity, builder, actions, refresh))
-            item(page = settingsPageDebug(activity, builder, actions, refresh))
-            item(page = theme)
-            // An action row, not a page: a plain item with a click, so it shows neither a
-            // page-row chevron nor a two-target separator (there is a single action).
-            item(
-                key = "settings_reset",
-                title = activity.getString(R.string.reset_to_default),
-                icon = { Icon(imageVector = Icons.Filled.Restore, contentDescription = null) },
-                onClick = onReset,
-            )
+            group(key = "settings_group", style = CardStyle.Filled) {
+                item(page = settingsPageGeneral(activity, builder, actions, refresh))
+                item(page = settingsPageSystem(activity, builder, actions, refresh))
+                item(page = settingsPageCamera(activity, builder, actions, refresh))
+                item(page = settingsPageControls(activity, builder, actions, refresh))
+                item(page = settingsPageGraphics(activity, builder, actions, refresh))
+                item(page = settingsPageLayout(activity, builder, actions, refresh))
+                item(page = settingsPageNetwork(activity, builder, actions, refresh))
+                item(page = settingsPageAudio(activity, builder, actions, refresh))
+                item(page = settingsPageDebug(activity, builder, actions, refresh))
+                item(page = theme)
+                // An action row, not a page: a plain item with a click, so it shows
+                // neither a page-row chevron nor a two-target separator (there is a
+                // single action).
+                item(
+                    title = activity.getString(R.string.reset_to_default),
+                    icon = { Icon(imageVector = Icons.Filled.Restore, contentDescription = null) },
+                    onClick = onReset,
+                )
+            }
         }
     }
 }
 
 /**
- * Wraps the rows of a settings section as a page of the tree. The section's submenu items
- * become nested pages (an [item] with a [Page] at their position in the list), so the
- * recursion covers the layout subpages (custom layouts, performance overlay, ...).
+ * Wraps the rows of a settings section as a page of the tree: the section headers become
+ * [section]s, the rows between them join one filled card [group] (the submenu items as
+ * nested pages — an [item] with a [Page] at their position in the list), so the recursion
+ * covers the layout subpages (custom layouts, performance overlay, ...).
  */
 internal fun settingsPage(
     activity: Activity,
@@ -99,13 +107,33 @@ internal fun settingsPage(
 ): Page {
     val items = builder.build(sectionId)
     return Page(id = sectionId, title = title, icon = icon) {
+        var pending = emptyList<Pair<Int, SettingsItem>>()
+        var groupNumber = 0
+        fun flushGroup() {
+            if (pending.isEmpty()) {
+                return
+            }
+            group(key = "${sectionId}_group_$groupNumber", style = CardStyle.Filled) {
+                pending.forEach { (index, setting) ->
+                    if (setting is SubmenuSetting) {
+                        item(page = settingsSubmenuPage(activity, builder, actions, refresh, setting))
+                    } else {
+                        renderSettingsItem(index, setting, activity, builder, actions, refresh)
+                    }
+                }
+            }
+            groupNumber++
+            pending = emptyList()
+        }
         items.forEachIndexed { index, setting ->
-            if (setting is SubmenuSetting) {
-                item(page = settingsSubmenuPage(activity, builder, actions, refresh, setting))
+            if (setting is HeaderSetting) {
+                flushGroup()
+                section(key = "${sectionId}_$index", title = activity.getString(setting.nameId))
             } else {
-                renderSettingsItem(index, setting, activity, builder, actions, refresh)
+                pending += index to setting
             }
         }
+        flushGroup()
     }
 }
 
@@ -123,12 +151,32 @@ private fun settingsSubmenuPage(
         title = activity.getString(sub.nameId),
         icon = drawableIcon(sub.iconId),
     ) {
+        var pending = emptyList<Pair<Int, SettingsItem>>()
+        var groupNumber = 0
+        fun flushGroup() {
+            if (pending.isEmpty()) {
+                return
+            }
+            group(key = "${sub.menuKey}_group_$groupNumber", style = CardStyle.Filled) {
+                pending.forEach { (index, setting) ->
+                    if (setting is SubmenuSetting) {
+                        item(page = settingsSubmenuPage(activity, builder, actions, refresh, setting))
+                    } else {
+                        renderSettingsItem(index, setting, activity, builder, actions, refresh)
+                    }
+                }
+            }
+            groupNumber++
+            pending = emptyList()
+        }
         items.forEachIndexed { index, setting ->
-            if (setting is SubmenuSetting) {
-                item(page = settingsSubmenuPage(activity, builder, actions, refresh, setting))
+            if (setting is HeaderSetting) {
+                flushGroup()
+                section(key = "${sub.menuKey}_$index", title = activity.getString(setting.nameId))
             } else {
-                renderSettingsItem(index, setting, activity, builder, actions, refresh)
+                pending += index to setting
             }
         }
+        flushGroup()
     }
 }

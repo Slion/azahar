@@ -14,7 +14,6 @@ import android.text.format.DateFormat
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material3.Icon
@@ -34,6 +33,8 @@ import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import java.lang.NumberFormatException
 import java.text.SimpleDateFormat
+import net.slions.compose.toolkit.GroupScope
+import net.slions.compose.toolkit.Item
 import net.slions.compose.toolkit.item
 import net.slions.compose.toolkit.itemActionIconButton
 import net.slions.compose.toolkit.itemList
@@ -41,7 +42,6 @@ import net.slions.compose.toolkit.itemMultiSelectList
 import net.slions.compose.toolkit.itemSlider
 import net.slions.compose.toolkit.itemSwitch
 import net.slions.compose.toolkit.itemTextField
-import net.slions.compose.toolkit.section
 import org.citra.citra_emu.R
 import org.citra.citra_emu.features.settings.model.AbstractIntSetting
 import org.citra.citra_emu.features.settings.model.AbstractStringSetting
@@ -88,10 +88,11 @@ internal fun drawableIcon(drawableResId: Int): @Composable () -> Unit =
     }
 
 /**
- * Renders one settings row. Submenu items are handled by the page builders (as nested
- * pages), so this only renders the non-submenu row types.
+ * Renders one settings row into a card group. Submenu items and section headers are handled
+ * by the page builders (as nested pages and sections, respectively), so this only renders
+ * the plain row types.
  */
-internal fun LazyListScope.renderSettingsItem(
+internal fun GroupScope.renderSettingsItem(
     index: Int,
     item: SettingsItem,
     activity: Activity,
@@ -107,7 +108,7 @@ internal fun LazyListScope.renderSettingsItem(
     }
     when (item) {
         is HeaderSetting ->
-            section(key = key, title = str(item.nameId))
+            item(title = str(item.nameId), content = { Item(title = str(item.nameId)) })
 
         is SwitchSetting -> {
             val checked = item.isChecked
@@ -333,19 +334,25 @@ internal fun LazyListScope.renderSettingsItem(
 
         is DateTimeSetting ->
             item(
-                key = key,
                 title = str(item.nameId),
                 enabled = item.isActive,
                 summary = item.value,
-                onClick = {
-                    if (item.isActive) {
-                        showDateTimePickers(activity as FragmentActivity, item) { selected ->
-                            if (item.value != selected) actions.onSettingsChanged()
-                            builder.putSetting(item.setSelectedValue(selected))
-                        }
-                    } else {
-                        disabledClick()
-                    }
+                content = {
+                    Item(
+                        title = str(item.nameId),
+                        enabled = item.isActive,
+                        summary = item.value,
+                        onClick = {
+                            if (item.isActive) {
+                                showDateTimePickers(activity as FragmentActivity, item) { selected ->
+                                    if (item.value != selected) actions.onSettingsChanged()
+                                    builder.putSetting(item.setSelectedValue(selected))
+                                }
+                            } else {
+                                disabledClick()
+                            }
+                        },
+                    )
                 },
             )
 
@@ -376,18 +383,27 @@ internal fun LazyListScope.renderSettingsItem(
 
         is RunnableSetting -> {
             val iconId = item.iconId
+            val icon = if (iconId != 0) drawableIcon(iconId) else null
+            val valueSummary = item.value?.invoke() ?: summary
             item(
-                key = key,
                 title = str(item.nameId),
                 enabled = item.isActive,
-                icon = if (iconId != 0) drawableIcon(iconId) else null,
-                summary = item.value?.invoke() ?: summary,
-                onClick = {
-                    if (item.isActive) {
-                        item.runnable()
-                    } else {
-                        disabledClick()
-                    }
+                icon = icon,
+                summary = valueSummary,
+                content = {
+                    Item(
+                        title = str(item.nameId),
+                        enabled = item.isActive,
+                        icon = icon,
+                        summary = valueSummary,
+                        onClick = {
+                            if (item.isActive) {
+                                item.runnable()
+                            } else {
+                                disabledClick()
+                            }
+                        },
+                    )
                 },
             )
         }
@@ -396,7 +412,7 @@ internal fun LazyListScope.renderSettingsItem(
             Unit // Submenu entries are rendered as nested pages by the page builders.
 
         else ->
-            section(key = key, title = str(item.nameId))
+            item(title = str(item.nameId), content = { Item(title = str(item.nameId)) })
     }
 }
 
