@@ -70,6 +70,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.slions.compose.toolkit.CardStyle
+import net.slions.compose.toolkit.GroupScope
 import net.slions.compose.toolkit.Page
 import net.slions.compose.toolkit.group
 import net.slions.compose.toolkit.item
@@ -809,121 +810,151 @@ class MainActivity :
                             .joinToString(" · "),
                     icon = { GameIcon(game) },
                 ) {
-                    item(
-                        key = "play",
-                        title = getString(R.string.play),
-                        onClick = { launchApplication(game) },
-                    )
-                    if (game.company.isNotEmpty()) {
-                        item(key = "company", title = game.company)
-                    }
-                    if (game.regions.isNotEmpty()) {
-                        item(
-                            key = "region",
-                            title = getString(R.string.game_context_region),
-                            summary = translateRegions(game.regions),
-                        )
-                    }
-                    item(
-                        key = "id",
-                        title = getString(R.string.game_context_id),
-                        summary = String.format("%016X", game.titleId),
-                    )
-                    item(
-                        key = "file",
-                        title = getString(R.string.game_context_file),
-                        summary = game.filename,
-                    )
-                    item(
-                        key = "type",
-                        title = getString(R.string.game_context_type),
-                        summary = game.fileType,
-                    )
-                    item(
-                        key = "playtime",
-                        title = getString(R.string.game_context_playtime),
-                        summary =
-                            formatPlayTime(
-                                NativeLibrary.playTimeManagerGetPlayTime(game.titleId)
-                            ),
-                    )
-                    if (game.isInsertable) {
-                        item(
-                            key = "cartridge",
-                            title =
-                                if (insertedCartridge == game.path) {
-                                    getString(R.string.game_context_eject)
-                                } else {
-                                    getString(R.string.game_context_insert)
-                                },
-                            onClick = {
-                                val inserted =
-                                    if (insertedCartridge == game.path) {
-                                        ""
-                                    } else {
-                                        game.path
-                                    }
-                                insertedCartridge = inserted
-                                PreferenceManager
-                                    .getDefaultSharedPreferences(this@MainActivity)
-                                    .edit()
-                                    .putString("insertedCartridge", inserted)
-                                    .apply()
-                            },
-                        )
-                    }
-                    item(
-                        key = "cheats",
-                        title = getString(R.string.cheats),
-                        onClick = {
-                            navController.popBackStack()
-                            navController.navigate(
-                                CheatsFragmentDirections.actionGlobalCheatsFragment(game.titleId)
+                    // A detail row: the card groups register the items (and their stable keys)
+                    // from this data.
+                    fun buildItem(
+                        title: String,
+                        summary: String? = null,
+                        enabled: Boolean = true,
+                        onClick: (() -> Unit)? = null,
+                    ) =
+                        GameRow(title, summary, enabled, onClick)
+                    fun GroupScope.registerRows(rows: List<GameRow>) {
+                        rows.forEach {
+                            item(
+                                title = it.title,
+                                summary = it.summary,
+                                enabled = it.enabled,
+                                onClick = it.onClick,
                             )
-                            supportFragmentManager.executePendingTransactions()
-                            showFragmentScreen()
-                        },
-                    )
-                    item(
-                        key = "compress",
-                        title =
-                            if (game.isCompressed) {
-                                getString(R.string.decompress)
-                            } else {
-                                getString(R.string.compress)
-                            },
-                        enabled = !game.isInstalled,
-                        onClick = {
-                            val shouldCompress = !game.isCompressed
-                            val recommendedExt =
-                                NativeLibrary.getRecommendedExtension(
-                                    game.path,
-                                    shouldCompress,
+                        }
+                    }
+                    val infoRows =
+                        buildList {
+                            if (game.company.isNotEmpty()) {
+                                add(buildItem(game.company))
+                            }
+                            if (game.regions.isNotEmpty()) {
+                                add(
+                                    buildItem(
+                                        getString(R.string.game_context_region),
+                                        translateRegions(game.regions)
+                                    )
                                 )
-                            val baseName = game.filename.substringBeforeLast('.')
-                            pendingCompressGame = game to shouldCompress
-                            compressDecompressLauncher.launch(
-                                "$baseName.$recommendedExt"
+                            }
+                            add(
+                                buildItem(
+                                    getString(R.string.game_context_id),
+                                    String.format("%016X", game.titleId)
+                                )
                             )
-                        },
-                    )
-                    item(
-                        key = "open",
-                        title = getString(R.string.game_page_open_folders),
-                        onClick = { showOpenFoldersDialog(game) },
-                    )
-                    if (game.isInstalled) {
-                        item(
-                            key = "uninstall",
-                            title = getString(R.string.game_page_uninstall),
-                            onClick = { showUninstallDialog(game) },
-                        )
+                            add(
+                                buildItem(getString(R.string.game_context_file), game.filename)
+                            )
+                            add(
+                                buildItem(
+                                    getString(R.string.game_context_type),
+                                    game.fileType
+                                )
+                            )
+                            add(
+                                buildItem(
+                                    getString(R.string.game_context_playtime),
+                                    formatPlayTime(
+                                        NativeLibrary.playTimeManagerGetPlayTime(game.titleId)
+                                    )
+                                )
+                            )
+                        }
+                    val actionRows =
+                        buildList {
+                            if (game.isInsertable) {
+                                add(
+                                    buildItem(
+                                        if (insertedCartridge == game.path) {
+                                            getString(R.string.game_context_eject)
+                                        } else {
+                                            getString(R.string.game_context_insert)
+                                        }
+                                    ) {
+                                        val inserted =
+                                            if (insertedCartridge == game.path) {
+                                                ""
+                                            } else {
+                                                game.path
+                                            }
+                                        insertedCartridge = inserted
+                                        PreferenceManager
+                                            .getDefaultSharedPreferences(this@MainActivity)
+                                            .edit()
+                                            .putString("insertedCartridge", inserted)
+                                            .apply()
+                                    }
+                                )
+                            }
+                            add(
+                                buildItem(getString(R.string.cheats)) {
+                                    navController.popBackStack()
+                                    navController.navigate(
+                                        CheatsFragmentDirections.actionGlobalCheatsFragment(
+                                            game.titleId
+                                        )
+                                    )
+                                    supportFragmentManager.executePendingTransactions()
+                                    showFragmentScreen()
+                                }
+                            )
+                            add(
+                                buildItem(
+                                    if (game.isCompressed) {
+                                        getString(R.string.decompress)
+                                    } else {
+                                        getString(R.string.compress)
+                                    },
+                                    enabled = !game.isInstalled
+                                ) {
+                                    val shouldCompress = !game.isCompressed
+                                    val recommendedExt =
+                                        NativeLibrary.getRecommendedExtension(
+                                            game.path,
+                                            shouldCompress,
+                                        )
+                                    val baseName = game.filename.substringBeforeLast('.')
+                                    pendingCompressGame = game to shouldCompress
+                                    compressDecompressLauncher.launch(
+                                        "$baseName.$recommendedExt"
+                                    )
+                                }
+                            )
+                            add(
+                                buildItem(getString(R.string.game_page_open_folders)) {
+                                    showOpenFoldersDialog(game)
+                                }
+                            )
+                            if (game.isInstalled) {
+                                add(
+                                    buildItem(getString(R.string.game_page_uninstall)) {
+                                        showUninstallDialog(game)
+                                    }
+                                )
+                            }
+                            add(
+                                buildItem(getString(R.string.delete_shader_cache)) {
+                                    showDeleteCacheDialog(game)
+                                }
+                            )
+                        }
+                    group(style = CardStyle.Filled) {
+                        registerRows(listOf(buildItem(getString(R.string.play)) {
+                            launchApplication(game)
+                        }))
                     }
-                    item(
-                        key = "cache",
-                        title = getString(R.string.delete_shader_cache),
-                        onClick = { showDeleteCacheDialog(game) },
-                    )
+                    if (infoRows.isNotEmpty()) {
+                        group(style = CardStyle.Filled) { registerRows(infoRows) }
+                    }
+                    if (actionRows.isNotEmpty()) {
+                        group(style = CardStyle.Filled) { registerRows(actionRows) }
+                    }
                 }
 
             val gamesPage =
@@ -971,42 +1002,36 @@ class MainActivity :
                 options =
                     listOf(
                         OptionRow(
-                            id = "artic_base",
                             title = getString(R.string.artic_base_connect),
                             summary = getString(R.string.artic_base_connect_description),
                             icon = Icons.Filled.Router,
                             onClick = { showArticBaseDialog() },
                         ),
                         OptionRow(
-                            id = "multiplayer",
                             title = getString(R.string.multiplayer),
                             summary = getString(R.string.multiplayer_description),
                             icon = Icons.Filled.Groups,
                             onClick = { displayMultiplayerDialog() },
                         ),
                         OptionRow(
-                            id = "install_game_content",
                             title = getString(R.string.install_game_content),
                             summary = getString(R.string.install_game_content_description),
                             icon = Icons.Filled.Download,
                             onClick = { ciaFileInstaller.launch(true) },
                         ),
                         OptionRow(
-                            id = "system_files",
                             title = getString(R.string.setup_system_files),
                             summary = getString(R.string.setup_system_files_description),
                             icon = Icons.Filled.SystemUpdate,
                             onClick = { openFragmentScreen(R.id.systemFilesFragment) },
                         ),
                         OptionRow(
-                            id = "share_log",
                             title = getString(R.string.share_log),
                             summary = getString(R.string.share_log_description),
                             icon = Icons.Filled.Share,
                             onClick = { shareLog() },
                         ),
                         OptionRow(
-                            id = "driver_manager",
                             title = getString(R.string.gpu_driver_manager),
                             summary =
                                 if (driverSupported) {
@@ -1020,7 +1045,6 @@ class MainActivity :
                             onClick = { openFragmentScreen(R.id.driverManagerFragment) },
                         ),
                         OptionRow(
-                            id = "user_folder",
                             title = getString(R.string.select_citra_user_folder),
                             summary = getString(R.string.select_citra_user_folder_home_description),
                             icon = Icons.Filled.Home,
@@ -1029,7 +1053,6 @@ class MainActivity :
                             },
                         ),
                         OptionRow(
-                            id = "games_folder",
                             title = getString(R.string.select_games_folder),
                             summary =
                                 if (gamesDir.isEmpty()) {
@@ -1041,7 +1064,6 @@ class MainActivity :
                             onClick = { getGamesDirectory.launch(null) },
                         ),
                         OptionRow(
-                            id = "about",
                             title = getString(R.string.about),
                             summary = getString(R.string.about_description),
                             icon = Icons.Filled.Info,
@@ -1161,3 +1183,11 @@ class MainActivity :
             homeViewModel.setGamesDir(this, result.path!!)
         }
 }
+
+/** A row of a game detail page; the card groups register the items from this data. */
+private data class GameRow(
+    val title: String,
+    val summary: String? = null,
+    val enabled: Boolean = true,
+    val onClick: (() -> Unit)? = null,
+)

@@ -58,7 +58,6 @@ fun MainScreen(
 
 /** A row of the Options page. */
 data class OptionRow(
-    val id: String,
     val title: String,
     val summary: String?,
     val icon: ImageVector,
@@ -93,15 +92,16 @@ fun buildHomeRootPage(
                         title = optionsTitle,
                         icon = icon(Icons.Filled.Tune),
                     ) {
-                        options.forEach { row ->
-                            item(
-                                key = row.id,
-                                title = row.title,
-                                summary = row.summary,
-                                enabled = row.enabled,
-                                icon = icon(row.icon),
-                                onClick = if (row.enabled) row.onClick else null,
-                            )
+                        group(style = CardStyle.Filled) {
+                            options.forEach { row ->
+                                item(
+                                    title = row.title,
+                                    summary = row.summary,
+                                    enabled = row.enabled,
+                                    icon = icon(row.icon),
+                                    onClick = if (row.enabled) row.onClick else null,
+                                )
+                            }
                         }
                     },
             )
