@@ -15,8 +15,8 @@ import androidx.compose.ui.res.stringResource
 import net.slions.compose.toolkit.Catalog
 import net.slions.compose.toolkit.CardStyle
 import net.slions.compose.toolkit.Page
-import net.slions.compose.toolkit.ProvidePreferenceLocals
-import net.slions.compose.toolkit.ProvidePreferenceTheme
+import net.slions.compose.toolkit.ProvideCatalogLocals
+import net.slions.compose.toolkit.ProvideItemTheme
 import net.slions.compose.toolkit.group
 import net.slions.compose.toolkit.item
 import org.citra.citra_emu.R
@@ -38,9 +38,9 @@ fun MainScreen(
     backEnabled: Boolean,
     onBack: () -> Unit,
 ) {
-    ProvidePreferenceLocals {
+    ProvideCatalogLocals {
         AzaharTheme(themeValues) {
-            ProvidePreferenceTheme {
+            ProvideItemTheme {
                 Catalog(
                     title = stringResource(R.string.app_name),
                     root = root,

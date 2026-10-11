@@ -23,8 +23,8 @@ import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.IOException
 import net.slions.compose.toolkit.Catalog
-import net.slions.compose.toolkit.ProvidePreferenceLocals
-import net.slions.compose.toolkit.ProvidePreferenceTheme
+import net.slions.compose.toolkit.ProvideCatalogLocals
+import net.slions.compose.toolkit.ProvideItemTheme
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
@@ -101,9 +101,9 @@ class SettingsActivity :
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
                 setContent {
-                    ProvidePreferenceLocals {
+                    ProvideCatalogLocals {
                         AzaharTheme(themeValues.value) {
-                            ProvidePreferenceTheme {
+                            ProvideItemTheme {
                                 Catalog(
                                     title = stringResource(R.string.preferences_settings),
                                     root =
