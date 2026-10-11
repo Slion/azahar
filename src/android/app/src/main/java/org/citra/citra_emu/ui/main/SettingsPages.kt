@@ -71,13 +71,12 @@ fun settingsPages(
             item(page = settingsPageAudio(activity, builder, actions, refresh))
             item(page = settingsPageDebug(activity, builder, actions, refresh))
             item(page = theme)
+            // An action row, not a page: a plain item with a click, so it shows neither a
+            // page-row chevron nor a two-target separator (there is a single action).
             item(
-                page =
-                    Page(
-                        id = "settings_reset",
-                        title = activity.getString(R.string.reset_to_default),
-                        icon = { Icon(imageVector = Icons.Filled.Restore, contentDescription = null) },
-                    ) {},
+                key = "settings_reset",
+                title = activity.getString(R.string.reset_to_default),
+                icon = { Icon(imageVector = Icons.Filled.Restore, contentDescription = null) },
                 onClick = onReset,
             )
         }
