@@ -62,7 +62,9 @@ import org.citra.citra_emu.features.settings.ui.SettingsListActions
 import org.citra.citra_emu.features.settings.ui.SettingsListBuilder
 import org.citra.citra_emu.fragments.AutoMapDialogFragment
 import org.citra.citra_emu.fragments.MotionBottomSheetDialogFragment
+import kotlin.math.ceil
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 /**
  * An app-drawable row icon. Rasterizes the framework-inflated drawable, like the settings
@@ -269,21 +271,26 @@ internal fun GroupScope.renderSettingsItem(
             // The Material slider only steps when the range divides evenly, so the grid
             // starts at the first multiple of the step (e.g. 10, 20, ... for a 1..200
             // range with step 10); if that still does not divide, the slider stays
-            // continuous and the committed value snaps to the step grid.
-            val start = ((item.min + item.step - 1) / item.step) * item.step
-            val stepped = !isFloat && (item.max - start) % item.step == 0
+            // continuous and the committed value snaps to the step grid. A step of one
+            // is the unit grid itself, so such sliders stay continuous.
+            val step = item.step
+            val start = ceil(item.min.toFloat() / step) * step
+            val divisions = (item.max.toFloat() - start) / step
+            val stepped = step != 1f && divisions.roundToLong().toFloat() == divisions
             itemSlider(
                 key = key,
                 value = value,
                 onValueChange = { newValue ->
                     if (item.isActive) {
                         if (isFloat) {
-                            if (value != newValue) {
+                            val snapped = if (stepped) (newValue / step).roundToInt() * step else newValue
+                            if (snapped != value) {
                                 actions.onSettingsChanged()
-                                builder.putSetting(item.setSelectedValue(newValue))
+                                builder.putSetting(item.setSelectedValue(snapped))
                             }
                         } else {
-                            val intValue = ((newValue / item.step).roundToInt() * item.step)
+                            val intValue = ((newValue / step).roundToInt() * step)
+                                .toInt()
                                 .coerceIn(item.min, item.max)
                             if (intValue != value.roundToInt()) {
                                 actions.onSettingsChanged()
@@ -300,11 +307,13 @@ internal fun GroupScope.renderSettingsItem(
                 // steps counts the intermediate positions (the endpoints are always allowed),
                 // so a 10..200 range with step 10 needs 18, not 19.
                 valueRange = start.toFloat()..item.max.toFloat(),
-                valueSteps = if (stepped) (item.max - start) / item.step - 1 else 0,
+                valueSteps = if (stepped) divisions.roundToInt() - 1 else 0,
                 enabled = item.isActive,
                 summary = summary,
                 valueText = { v ->
-                    (if (isFloat) v.toString() else v.roundToInt().toString()) + item.units
+                    val text = if (isFloat) item.valueFormat?.invoke(v) ?: v.toString()
+                    else v.roundToInt().toString()
+                    text + item.units
                 },
             )
         }

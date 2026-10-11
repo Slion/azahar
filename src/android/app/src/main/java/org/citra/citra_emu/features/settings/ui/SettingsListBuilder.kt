@@ -15,6 +15,7 @@ import android.os.Build
 import androidx.annotation.StringRes
 import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import java.util.Locale
 import org.citra.citra_emu.BuildConfig
 import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.R
@@ -256,7 +257,7 @@ class SettingsListBuilder(
                     "%",
                     IntSetting.FRAME_LIMIT.key,
                     IntSetting.FRAME_LIMIT.defaultValue.toFloat(),
-                    step = 10
+                    step = 10f
                 )
             )
             add(
@@ -269,7 +270,7 @@ class SettingsListBuilder(
                     "%",
                     IntSetting.TURBO_LIMIT.key,
                     IntSetting.TURBO_LIMIT.defaultValue.toFloat(),
-                    step = 20
+                    step = 20f
                 )
             )
             add(
@@ -1373,7 +1374,9 @@ class SettingsListBuilder(
                     5,
                     "",
                     FloatSetting.LARGE_SCREEN_PROPORTION.key,
-                    FloatSetting.LARGE_SCREEN_PROPORTION.defaultValue
+                    FloatSetting.LARGE_SCREEN_PROPORTION.defaultValue,
+                    step = 0.25f,
+                    valueFormat = { String.format(Locale.US, "%.2f", it) }
                 )
             )
             add(
@@ -1905,11 +1908,12 @@ class SettingsListBuilder(
                     IntSetting.CPU_CLOCK_SPEED,
                     R.string.cpu_clock_speed,
                     0,
-                    25,
+                    20,
                     400,
                     "%",
                     IntSetting.CPU_CLOCK_SPEED.key,
-                    IntSetting.CPU_CLOCK_SPEED.defaultValue.toFloat()
+                    IntSetting.CPU_CLOCK_SPEED.defaultValue.toFloat(),
+                    step = 10f
                 )
             )
             add(
