@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceManager
@@ -38,6 +39,7 @@ import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.ui.main.AzaharTheme
 import org.citra.citra_emu.ui.main.ThemeSettings
 import org.citra.citra_emu.ui.main.ThemeSettings.toNightMode
+import org.citra.citra_emu.ui.main.applyStatusBarVisibility
 import org.citra.citra_emu.ui.main.ThemeValues
 import org.citra.citra_emu.ui.main.settingsPages
 import org.citra.citra_emu.utils.DirectoryInitialization
@@ -74,6 +76,9 @@ class SettingsActivity :
         super.onCreate(savedInstanceState)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        window.statusBarColor = ContextCompat.getColor(applicationContext, android.R.color.transparent)
+        applyStatusBarVisibility()
 
         if (!DirectoryInitialization.areCitraDirectoriesReady()) {
             DirectoryInitialization.start()

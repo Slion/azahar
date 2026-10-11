@@ -51,8 +51,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.widget.doOnTextChanged
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Lifecycle
@@ -140,14 +138,6 @@ class MainActivity :
 
     companion object {
         const val KEY_SETUP_CURRENT_PAGE = "SetupCurrentPage"
-
-        /**
-         * The status bar uses the transient (hide-on-swipe) mode only when the display's
-         * height is below this many dp: on a short edge it is a large share of the screen,
-         * so hiding it buys usable area. On taller screens it stays a normal, static bar.
-         * Tuned per device class rather than exposed as a user setting.
-         */
-        const val TRANSIENT_STATUS_BAR_MAX_HEIGHT_DP = 480
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -237,25 +227,6 @@ class MainActivity :
                     homeViewModel.isPickingUserDir.collect { checkUserPermissions() }
                 }
             }
-        }
-    }
-
-    /**
-     * On a short screen (height below [TRANSIENT_STATUS_BAR_MAX_HEIGHT_DP]) the status bar
-     * uses the same transparent transient mode as the game: hidden by default, and a swipe
-     * from the top brings it back as an overlay that folds back on its own. On taller
-     * screens it is left as a normal, static bar. The activity recreates on rotation, so
-     * this only needs to run in [onCreate].
-     */
-    private fun applyStatusBarVisibility() {
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        val heightDp = resources.displayMetrics.heightPixels / resources.displayMetrics.density
-        if (heightDp < TRANSIENT_STATUS_BAR_MAX_HEIGHT_DP) {
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller.hide(WindowInsetsCompat.Type.statusBars())
-        } else {
-            controller.show(WindowInsetsCompat.Type.statusBars())
         }
     }
 
